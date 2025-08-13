@@ -29,10 +29,10 @@ def get_analytics_service() -> AnalyticsService:
 async def get_dashboard_analytics(
     current_user: CurrentUser,
     db: DatabaseSession,
-    scope: str = Query(..., regex="^(admin|team|member)$", description="Analytics scope"),
+    scope: str = Query(..., pattern="^(admin|team|member)$", description="Analytics scope"),
     team_id: Optional[str] = Query(None, description="Team ID for team scope"),
     user_id: Optional[str] = Query(None, description="User ID for member scope"),
-    range: str = Query("month", regex="^(day|week|month|custom)$", description="Time range"),
+    range: str = Query("month", pattern="^(day|week|month|custom)$", description="Time range"),
     from_date: Optional[datetime] = Query(None, alias="from", description="Start date for custom range"),
     to_date: Optional[datetime] = Query(None, alias="to", description="End date for custom range"),
     analytics_service: AnalyticsService = Depends(get_analytics_service)

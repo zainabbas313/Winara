@@ -34,7 +34,7 @@ class DateRange(BaseModel):
 
 class SortOrder(BaseModel):
     field: str
-    direction: str = Field(regex="^(asc|desc)$", default="desc")
+    direction: str = Field(pattern="^(asc|desc)$", default="desc")
 
 
 class PaginationParams(BaseModel):
@@ -51,12 +51,13 @@ class FilterParams(BaseModel):
 
 
 class ExportRequest(BaseModel):
-    type: str = Field(regex="^(bid_performance|financial|operational)$")
-    format: str = Field(regex="^(csv|xlsx|pdf|json)$")
+    type: str = Field(pattern="^(bid_performance|financial|operational)$")
+    format: str = Field(pattern="^(csv|xlsx|pdf|json)$")
     filters: Optional[dict] = None
 
 
 class ExportResponse(BaseModel):
     export_id: UUID
-    status: str = Field(regex="^(queued|processing|ready)$")
+    status: str = Field(pattern="^(queued|processing|ready)$")
     download_url: Optional[str] = None
+

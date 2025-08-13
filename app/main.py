@@ -6,8 +6,8 @@ from contextlib import asynccontextmanager
 import uvicorn
 import logging
 from core.config.config import settings
-from .database import engine, Base
-from .routers import auth, users, teams, verticals, bids, receivables, analytics
+from database.database import engine, Base
+from routers import auth, users, teams, verticals, bids, receivables, analytics
 
 
 # Configure logging
@@ -43,8 +43,6 @@ app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     description="Centralized Upwork bidding management system with comprehensive analytics and role-based access control",
-    docs_url="/docs" if settings.DEBUG else None,
-    redoc_url="/redoc" if settings.DEBUG else None,
     lifespan=lifespan
 )
 

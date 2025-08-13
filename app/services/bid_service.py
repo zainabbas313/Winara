@@ -17,7 +17,7 @@ from utils.helpers import (
     calculate_connect_cost, estimate_project_value, 
     can_edit_bid, calculate_days_since
 )
-from ..utils.validators import validate_connects_usage, validate_budget_consistency
+from utils.validators import validate_connects_usage, validate_budget_consistency
 import logging
 
 logger = logging.getLogger(__name__)

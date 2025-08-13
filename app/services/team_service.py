@@ -33,7 +33,7 @@ class TeamService(ITeamService):
                 )
             
             # Validate sub-admin exists and is available
-            from ..repositories.user_repository import UserRepository
+            from repositories.user_repository import UserRepository
             user_repo = UserRepository()
             sub_admin = user_repo.get_by_id(db, team_data.sub_admin_id)
             
@@ -61,7 +61,7 @@ class TeamService(ITeamService):
             team = self.team_repo.create(db, team_data, created_by_id)
             
             # Update sub-admin's team assignment
-            from ..schemas.user import UserUpdate
+            from schemas.user import UserUpdate
             user_update = UserUpdate(team_id=team.id)
             user_repo.update(db, team_data.sub_admin_id, user_update)
             
@@ -166,7 +166,7 @@ class TeamService(ITeamService):
             
             # If sub-admin is being changed, validate the new one
             if team_data.sub_admin_id and team_data.sub_admin_id != team.sub_admin_id:
-                from ..repositories.user_repository import UserRepository
+                from repositories.user_repository import UserRepository
                 user_repo = UserRepository()
                 
                 new_sub_admin = user_repo.get_by_id(db, team_data.sub_admin_id)
@@ -186,7 +186,7 @@ class TeamService(ITeamService):
                 
                 # Update old sub-admin's team assignment
                 if team.sub_admin_id:
-                    from ..schemas.user import UserUpdate
+                    from schemas.user import UserUpdate
                     user_update = UserUpdate(team_id=None)
                     user_repo.update(db, team.sub_admin_id, user_update)
                 
@@ -250,8 +250,8 @@ class TeamService(ITeamService):
             
             # Update sub-admin's team assignment
             if team.sub_admin_id:
-                from ..repositories.user_repository import UserRepository
-                from ..schemas.user import UserUpdate
+                from repositories.user_repository import UserRepository
+                from schemas.user import UserUpdate
                 user_repo = UserRepository()
                 user_update = UserUpdate(team_id=None)
                 user_repo.update(db, team.sub_admin_id, user_update)

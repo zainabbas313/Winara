@@ -299,7 +299,7 @@ class BidRepository(BaseRepository[Bid], IBidRepository):
     def get_bids_for_receivables(self, db: Session) -> List[Bid]:
         """Get won bids that don't have receivables yet."""
         try:
-            from ..models import Receivable
+            from models import Receivable
             
             return db.query(Bid).outerjoin(Receivable).filter(
                 and_(

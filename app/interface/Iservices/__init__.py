@@ -4,6 +4,6 @@ from .team_service import ITeamService
 from .vertical_service import IVerticalService
 from .bid_service import IBidService
 from .receivable_service import IReceivableService
-from .notification_service import INotificationService
+# from .notification_service import INotificationService
 from .analytics_service import IAnalyticsService
-from .email_service import IEmailService
+# from .email_service import IEmailService

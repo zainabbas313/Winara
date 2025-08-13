@@ -3,7 +3,7 @@ from typing import Optional
 from datetime import datetime
 from uuid import UUID
 from decimal import Decimal
-from ..models import BudgetType, BidStatus
+from models.models import BudgetType, BidStatus
 
 
 class BidBase(BaseModel):

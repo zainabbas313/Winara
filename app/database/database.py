@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from redis import Redis
 import redis.asyncio as aioredis
-from ..core.config.config import settings
+from core.config.config import settings
 
 # PostgreSQL Database
 engine = create_engine(

@@ -1,18 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from typing import List
-from ..dependencies import (
+from dependencies.dependencies import (
     get_db, get_current_user, get_client_ip, get_user_agent,
     DatabaseSession, CurrentUser
 )
-from ..services.auth_service import AuthService
-from ..schemas.auth import (
+from services.auth_service import AuthService
+from schemas.auth import (
     LoginRequest, LoginResponse, RefreshTokenRequest, RefreshTokenResponse,
     LogoutRequest, ForgotPasswordRequest, ResetPasswordRequest,
     ChangePasswordRequest, UserSessionResponse
 )
-from ..schemas.common import SuccessResponse, PaginatedResponse
-from ..models import User
+from schemas.common import SuccessResponse, PaginatedResponse
+from models.models import User
 import logging
 
 logger = logging.getLogger(__name__)

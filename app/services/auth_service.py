@@ -4,10 +4,10 @@ from datetime import datetime, timedelta
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
-from ..interface.Iservices.auth_service import IAuthService
-from ..repositories.user_repository import UserRepository
-from ..repositories.audit_repository import AuditRepository
-from ..schemas.auth import (
+from interface.Iservices.auth_service import IAuthService
+from repositories.user_repository import UserRepository
+from repositories.audit_repository import AuditRepository
+from schemas.auth import (
     LoginRequest, LoginResponse, RefreshTokenRequest, RefreshTokenResponse,
     LogoutRequest, ForgotPasswordRequest, ResetPasswordRequest, 
     ChangePasswordRequest, UserSessionResponse, TokenData, UserProfile,
@@ -20,8 +20,7 @@ from utils.auth import (
     create_refresh_token, verify_token, create_password_reset_token,
     verify_password_reset_token
 )
-from utils.security import detect_suspicious_activity, calculate_risk_score
-from utils.validators import validate_password_strength
+from utils.security import detect_suspicious_activity, calculate_risk_score,validate_password_strength
 from core.config.config import settings
 import logging
 

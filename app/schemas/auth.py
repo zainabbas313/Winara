@@ -2,7 +2,7 @@ from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from datetime import datetime
 from uuid import UUID
-from ..models import UserRole, UserStatus, SessionStatus
+from models.models import UserRole, UserStatus, SessionStatus
 
 
 class DeviceInfo(BaseModel):
@@ -11,7 +11,7 @@ class DeviceInfo(BaseModel):
     os: Optional[str] = None
     browser: Optional[str] = None
     browser_version: Optional[str] = None
-    device_type: str = Field(regex="^(desktop|mobile|tablet)$")
+    device_type: str = Field(pattern="^(desktop|mobile|tablet)$")
 
 
 class LoginRequest(BaseModel):

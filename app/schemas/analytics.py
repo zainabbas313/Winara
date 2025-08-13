@@ -6,10 +6,10 @@ from decimal import Decimal
 
 
 class AnalyticsScope(BaseModel):
-    scope: str = Field(regex="^(admin|team|member)$")
+    scope: str = Field(pattern="^(admin|team|member)$")
     team_id: Optional[UUID] = None
     user_id: Optional[UUID] = None
-    range: str = Field(default="month", regex="^(day|week|month|custom)$")
+    range: str = Field(default="month", pattern="^(day|week|month|custom)$")
     from_date: Optional[datetime] = Field(alias="from")
     to_date: Optional[datetime] = Field(alias="to")
 
@@ -66,8 +66,8 @@ class DashboardAnalytics(BaseModel):
 
 
 class ReportRequest(BaseModel):
-    type: str = Field(regex="^(bid_performance|financial|operational)$")
-    format: str = Field(default="json", regex="^(json)$")
+    type: str = Field(pattern="^(bid_performance|financial|operational)$")
+    format: str = Field(default="json", pattern="^(json)$")
     filters: Optional[Dict[str, Any]] = None
 
 
