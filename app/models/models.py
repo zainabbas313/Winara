@@ -95,7 +95,11 @@ class User(Base):
     timezone = Column(String(50), default="UTC+05:00")
     role = Column(Enum(UserRole), nullable=False)
     status = Column(Enum(UserStatus), default=UserStatus.ACTIVE)
-    team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id"))
+    team_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("teams.id", use_alter=True, name="fk_user_team_id"),
+        nullable=True
+    )
     is_active = Column(Boolean, default=True)
     is_verified = Column(Boolean, default=False)
     is_locked = Column(Boolean, default=False)
@@ -105,7 +109,7 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     # Relationships
-    team = relationship("Team", back_populates="members")
+    team = relationship("Team", back_populates="members", foreign_keys=[team_id], post_update=True)
     created_teams = relationship("Team", foreign_keys="Team.created_by_id", back_populates="created_by")
     bids = relationship("Bid", back_populates="member")
     vertical_assignments = relationship("UserVertical", back_populates="user")
@@ -120,18 +124,26 @@ class Team(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(100), nullable=False, unique=True)
     description = Column(Text)
-    sub_admin_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    sub_admin_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", use_alter=True, name="fk_team_sub_admin_id"),
+        nullable=True
+    )
     status = Column(Enum(UserStatus), default=UserStatus.ACTIVE)
     total_earn = Column(DECIMAL(12, 2), default=0)
     total_connect_used = Column(Integer, default=0)
     total_bids = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    created_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_by_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", use_alter=True, name="fk_team_created_by_id"),
+        nullable=True
+    )
     
     # Relationships
-    sub_admin = relationship("User", foreign_keys=[sub_admin_id])
-    created_by = relationship("User", foreign_keys=[created_by_id], back_populates="created_teams")
+    sub_admin = relationship("User", foreign_keys=[sub_admin_id], post_update=True)
+    created_by = relationship("User", foreign_keys=[created_by_id], back_populates="created_teams", post_update=True)
     members = relationship("User", foreign_keys="User.team_id", back_populates="team")
     bids = relationship("Bid", back_populates="team")
     receivables = relationship("Receivable", back_populates="team")
