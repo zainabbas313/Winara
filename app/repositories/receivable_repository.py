@@ -10,6 +10,7 @@ from schemas.receivable import ReceivableCreate, ReceivableUpdate, ReceivableLis
 from schemas.common import PaginatedResponse
 from interface.Irepositories.receivable_repository import IReceivableRepository
 from utils.helpers import is_overdue_payment, calculate_overdue_days
+from utils.sort_values import _apply_sorting
 import logging
 
 logger = logging.getLogger(__name__)
@@ -62,7 +63,7 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
             query = self._apply_receivable_filters(query, filters)
             
             # Apply sorting
-            query = self._apply_sorting(query, sort_by)
+            query = _apply_sorting(query, sort_by, Receivable)
             
             # Get total count
             total_count = query.count()

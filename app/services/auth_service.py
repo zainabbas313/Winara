@@ -8,7 +8,7 @@ from interface.Iservices.auth_service import IAuthService
 from repositories.user_repository import UserRepository
 from repositories.audit_repository import AuditRepository
 from schemas.auth import (
-    LoginRequest, LoginResponse, RefreshTokenRequest, RefreshTokenResponse,
+    DeviceInfo, LoginRequest, LoginResponse, RefreshTokenRequest, RefreshTokenResponse,
     LogoutRequest, ForgotPasswordRequest, ResetPasswordRequest, 
     ChangePasswordRequest, UserSessionResponse, TokenData, UserProfile,
     SessionInfo
@@ -32,7 +32,7 @@ class AuthService(IAuthService):
         self.user_repo = UserRepository()
         self.audit_repo = AuditRepository()
 
-    def login(self, db: Session, login_data: LoginRequest) -> LoginResponse:
+    def login(self, db: Session, login_data: LoginRequest, device_data: DeviceInfo) -> DeviceInfo:
         """Authenticate user and create session."""
         try:
             # Get user by email
@@ -41,7 +41,7 @@ class AuthService(IAuthService):
                 # Log failed login attempt
                 self.audit_repo.create_security_event(
                     db, SecurityEventType.LOGIN_FAILED, 2, None, None,
-                    login_data.device.ip_address, login_data.device.user_agent,
+                    device_data.ip_address, device_data.user_agent,
                     f"Login failed for email: {login_data.email}",
                     {"email": login_data.email}
                 )
@@ -55,7 +55,7 @@ class AuthService(IAuthService):
                 # Log failed login attempt
                 self.audit_repo.create_security_event(
                     db, SecurityEventType.LOGIN_FAILED, 2, user.id, None,
-                    login_data.device.ip_address, login_data.device.user_agent,
+                    device_data.ip_address, device_data.user_agent,
                     "Invalid password provided"
                 )
                 raise HTTPException(
@@ -77,11 +77,11 @@ class AuthService(IAuthService):
                 )
             
             # Check for suspicious activity
-            suspicious = self.detect_suspicious_activity(db, user.id, login_data.device.ip_address)
+            suspicious = self.detect_suspicious_activity(db, user.id, device_data.ip_address)
             if suspicious:
                 self.audit_repo.create_security_event(
                     db, SecurityEventType.SUSPICIOUS_ACTIVITY, 4, user.id, None,
-                    login_data.device.ip_address, login_data.device.user_agent,
+                    device_data.ip_address, device_data.user_agent,
                     "Suspicious login pattern detected"
                 )
                 # Could implement additional security measures here
@@ -99,7 +99,7 @@ class AuthService(IAuthService):
             # Create session
             expires_at = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
             session = self.user_repo.create_session(
-                db, user.id, refresh_token, login_data.device, expires_at
+                db, user.id, refresh_token, device_data, expires_at
             )
             
             # Update user's last login
@@ -108,8 +108,8 @@ class AuthService(IAuthService):
             # Log successful login
             self.audit_repo.create_audit_log(
                 db, AuditAction.LOGIN, "user", user.id, user.id, session.id,
-                login_data.device.ip_address, login_data.device.user_agent,
-                "User logged in successfully"
+                device_data.ip_address, device_data.user_agent,
+                "User logged in successfully", None, None
             )
             
             # Create response

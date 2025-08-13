@@ -126,10 +126,15 @@ class UserService(IUserService):
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Insufficient permissions"
                 )
-            
-            # Get users
-            result = self.user_repo.get_all(db, filters, skip, limit, sort_by)
-            
+
+            result = self.user_repo.get_all(
+                                        db=db,
+                                        filters=filters,
+                                        skip=skip,
+                                        limit=limit,
+                                        sort_by=sort_by  
+                                    )
+                                                
             # Convert to response objects
             user_responses = [UserResponse.from_orm(user) for user in result.items]
             

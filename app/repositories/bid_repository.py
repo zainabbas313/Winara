@@ -11,6 +11,7 @@ from schemas.common import PaginatedResponse
 from interface.Irepositories.bid_repository import IBidRepository
 from utils.helpers import calculate_connect_cost, estimate_project_value, can_edit_bid
 from core.config.config import settings
+from utils.sort_values import _apply_sorting
 import logging
 
 logger = logging.getLogger(__name__)
@@ -69,7 +70,7 @@ class BidRepository(BaseRepository[Bid], IBidRepository):
             query = self._apply_bid_filters(query, filters)
             
             # Apply sorting
-            query = self._apply_sorting(query, sort_by)
+            query = _apply_sorting(query, sort_by, Bid)
             
             # Get total count
             total_count = query.count()

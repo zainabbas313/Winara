@@ -81,8 +81,8 @@ async def get_teams(
     )
     
     return team_service.get_teams(
-        db, filters, skip, limit, sort,
-        current_user.id, current_user.role.value, current_user.team_id
+        db, filters,
+        current_user.id, current_user.role.value, skip, limit, sort, current_user.team_id
     )
 
 

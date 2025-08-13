@@ -7,7 +7,7 @@ from dependencies.dependencies import (
 )
 from services.auth_service import AuthService
 from schemas.auth import (
-    LoginRequest, LoginResponse, RefreshTokenRequest, RefreshTokenResponse,
+    DeviceInfo, LoginRequest, LoginResponse, RefreshTokenRequest, RefreshTokenResponse,
     LogoutRequest, ForgotPasswordRequest, ResetPasswordRequest,
     ChangePasswordRequest, UserSessionResponse
 )
@@ -39,11 +39,14 @@ async def login(
     - **device**: Device information for session tracking
     """
     try:
-        # Add IP address and user agent to device info
-        login_data.device.ip_address = get_client_ip(request)
-        login_data.device.user_agent = get_user_agent(request)
-        
-        return auth_service.login(db, login_data)
+        ip_address = get_client_ip(request)
+        user_agent = get_user_agent(request)
+        device_info = DeviceInfo(
+                ip_address=ip_address,
+                user_agent=user_agent,
+                device_type="desktop"  # You can implement logic to detect this from user_agent
+            )
+        return auth_service.login(db, login_data, device_info)
     except Exception as e:
         logger.error(f"Login error: {e}")
         raise

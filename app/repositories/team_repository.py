@@ -9,6 +9,7 @@ from models.models import Team, TeamGoal, User, Bid, BidStatus
 from schemas.team import TeamCreate, TeamUpdate, TeamListFilter, TeamGoalCreate, TeamGoalUpdate
 from schemas.common import PaginatedResponse
 from interface.Irepositories.team_repository import ITeamRepository
+from utils.sort_values import _apply_sorting
 import logging
 
 logger = logging.getLogger(__name__)
@@ -74,7 +75,7 @@ class TeamRepository(BaseRepository[Team], ITeamRepository):
                 )
             
             # Apply sorting
-            query = self._apply_sorting(query, sort_by)
+            query = _apply_sorting(query, sort_by, Team)
             
             # Get total count
             total_count = query.count()

@@ -82,8 +82,8 @@ async def get_users(
     )
     
     return user_service.get_users(
-        db, filters, skip, limit, sort,
-        current_user.id, current_user.role.value, current_user.team_id
+        db, filters, 
+        current_user.id, current_user.role.value,  skip, limit, sort, current_user.team_id
     )
 
 

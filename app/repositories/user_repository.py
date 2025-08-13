@@ -12,6 +12,8 @@ from interface.Irepositories.user_repository import IUserRepository
 from utils.auth import get_password_hash
 from utils.security import parse_user_agent
 import logging
+from sqlalchemy import asc, desc
+from utils.sort_values import _apply_sorting
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +75,7 @@ class UserRepository(BaseRepository[User], IUserRepository):
                 )
             
             # Apply sorting
-            query = self._apply_sorting(query, sort_by)
+            query = _apply_sorting(query, sort_by, User)
             
             # Get total count
             total_count = query.count()

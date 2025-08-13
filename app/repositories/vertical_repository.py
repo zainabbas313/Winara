@@ -9,6 +9,7 @@ from schemas.common import PaginatedResponse
 from interface.Irepositories.vertical_repository import IVerticalRepository
 import logging
 
+
 logger = logging.getLogger(__name__)
 
 

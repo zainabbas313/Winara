@@ -1,4 +1,6 @@
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, Text, ForeignKey, Enum, DECIMAL, Date, Index
+from sqlalchemy import (
+    Column, String, Integer, Boolean, DateTime, Text, ForeignKey, Enum, DECIMAL, Date, Index
+)
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -7,6 +9,9 @@ import enum
 from database.database import Base
 
 
+# ==========================
+# ENUM DEFINITIONS
+# ==========================
 class UserRole(str, enum.Enum):
     ADMIN = "admin"
     SUB_ADMIN = "sub_admin"
@@ -80,9 +85,12 @@ class SecurityEventType(str, enum.Enum):
     UNAUTHORIZED_ACCESS = "unauthorized_access"
 
 
+# ==========================
+# MODELS
+# ==========================
 class User(Base):
     __tablename__ = "users"
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String(255), unique=True, nullable=False, index=True)
     username = Column(String(50), unique=True, nullable=False, index=True)
@@ -95,11 +103,7 @@ class User(Base):
     timezone = Column(String(50), default="UTC+05:00")
     role = Column(Enum(UserRole), nullable=False)
     status = Column(Enum(UserStatus), default=UserStatus.ACTIVE)
-    team_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("teams.id", use_alter=True, name="fk_user_team_id"),
-        nullable=True
-    )
+    team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id", use_alter=True, name="fk_user_team_id"), nullable=True)
     is_active = Column(Boolean, default=True)
     is_verified = Column(Boolean, default=False)
     is_locked = Column(Boolean, default=False)
@@ -107,12 +111,19 @@ class User(Base):
     last_activity = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    
+
     # Relationships
     team = relationship("Team", back_populates="members", foreign_keys=[team_id], post_update=True)
     created_teams = relationship("Team", foreign_keys="Team.created_by_id", back_populates="created_by")
     bids = relationship("Bid", back_populates="member")
-    vertical_assignments = relationship("UserVertical", back_populates="user")
+
+    # FIX: specify foreign_keys to avoid ambiguity
+    vertical_assignments = relationship(
+        "UserVertical",
+        back_populates="user",
+        foreign_keys="UserVertical.user_id"
+    )
+
     sessions = relationship("UserSession", back_populates="user")
     notifications = relationship("Notification", back_populates="user")
     audit_logs = relationship("AuditLog", back_populates="user")
@@ -120,27 +131,19 @@ class User(Base):
 
 class Team(Base):
     __tablename__ = "teams"
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(100), nullable=False, unique=True)
     description = Column(Text)
-    sub_admin_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", use_alter=True, name="fk_team_sub_admin_id"),
-        nullable=True
-    )
+    sub_admin_id = Column(UUID(as_uuid=True), ForeignKey("users.id", use_alter=True, name="fk_team_sub_admin_id"), nullable=True)
     status = Column(Enum(UserStatus), default=UserStatus.ACTIVE)
     total_earn = Column(DECIMAL(12, 2), default=0)
     total_connect_used = Column(Integer, default=0)
     total_bids = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    created_by_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", use_alter=True, name="fk_team_created_by_id"),
-        nullable=True
-    )
-    
+    created_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", use_alter=True, name="fk_team_created_by_id"), nullable=True)
+
     # Relationships
     sub_admin = relationship("User", foreign_keys=[sub_admin_id], post_update=True)
     created_by = relationship("User", foreign_keys=[created_by_id], back_populates="created_teams", post_update=True)
@@ -152,7 +155,7 @@ class Team(Base):
 
 class TeamGoal(Base):
     __tablename__ = "team_goals"
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id"), nullable=False)
     goal_name = Column(String(200), nullable=False)
@@ -167,7 +170,7 @@ class TeamGoal(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     created_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    
+
     # Relationships
     team = relationship("Team", back_populates="goals")
     created_by = relationship("User")
@@ -175,7 +178,7 @@ class TeamGoal(Base):
 
 class Vertical(Base):
     __tablename__ = "verticals"
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(200), nullable=False)
     slug = Column(String(200), nullable=False, unique=True, index=True)
@@ -189,12 +192,12 @@ class Vertical(Base):
     connect_used = Column(Integer, default=0)
     total_bids = Column(Integer, default=0)
     avg_project_value = Column(DECIMAL(12, 2))
-    competition_level = Column(Integer, default=1)  # 1-10 scale
-    success_rate = Column(DECIMAL(5, 4))  # Percentage as decimal
+    competition_level = Column(Integer, default=1)
+    success_rate = Column(DECIMAL(5, 4))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     created_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    
+
     # Relationships
     parent = relationship("Vertical", remote_side=[id])
     children = relationship("Vertical", cascade="all, delete-orphan")
@@ -205,7 +208,7 @@ class Vertical(Base):
 
 class UserVertical(Base):
     __tablename__ = "user_verticals"
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     vertical_id = Column(UUID(as_uuid=True), ForeignKey("verticals.id"), nullable=False)
@@ -217,15 +220,13 @@ class UserVertical(Base):
     total_bids = Column(Integer, default=0)
     success_rate = Column(DECIMAL(5, 4))
     notes = Column(Text)
-    
+
     # Relationships
     user = relationship("User", foreign_keys=[user_id], back_populates="vertical_assignments")
     vertical = relationship("Vertical", back_populates="user_assignments")
     assigned_by = relationship("User", foreign_keys=[assigned_by_id])
-    
+
     __table_args__ = (Index('ix_user_vertical_unique', 'user_id', 'vertical_id', unique=True),)
-
-
 class Bid(Base):
     __tablename__ = "bids"
     

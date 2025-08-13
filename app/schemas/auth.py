@@ -17,7 +17,6 @@ class DeviceInfo(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
-    device: DeviceInfo
 
 
 class TokenResponse(BaseModel):

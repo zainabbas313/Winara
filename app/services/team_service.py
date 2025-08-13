@@ -68,7 +68,7 @@ class TeamService(ITeamService):
             # Log team creation
             self.audit_repo.create_audit_log(
                 db, AuditAction.CREATE, "team", team.id, created_by_id, None,
-                None, None, f"Team created: {team.name}",
+                None, None, f"Team created: {team.name}",None,
                 new_values={
                     "name": team.name,
                     "sub_admin_id": str(team.sub_admin_id),

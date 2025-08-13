@@ -2,10 +2,12 @@ from typing import Generic, TypeVar, Type, Optional, List, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc, asc, func, text
 from sqlalchemy.exc import SQLAlchemyError
+from models.models import User
 from database.database import Base
 from utils.helpers import parse_sort_parameter, parse_pagination_cursor, build_pagination_cursor
 from schemas.common import PaginatedResponse
 import json
+from utils.sort_values import _apply_sorting
 import logging
 
 logger = logging.getLogger(__name__)
@@ -55,7 +57,7 @@ class BaseRepository(Generic[ModelType]):
                 query = self._apply_filters(query, filters)
             
             # Apply sorting
-            query = self._apply_sorting(query, sort_by)
+            query = _apply_sorting(query, sort_by, User)
             
             # Get total count before pagination
             total_count = query.count()
@@ -159,19 +161,6 @@ class BaseRepository(Generic[ModelType]):
                         query = query.filter(actual_column.ilike(f"%{value}%"))
                 else:
                     query = query.filter(column == value)
-        
-        return query
-
-    def _apply_sorting(self, query, sort_by: str):
-        """Apply sorting to query."""
-        sort_field, direction = parse_sort_parameter(sort_by)
-        
-        if hasattr(self.model, sort_field):
-            column = getattr(self.model, sort_field)
-            if direction == 'desc':
-                query = query.order_by(desc(column))
-            else:
-                query = query.order_by(asc(column))
         
         return query
 
