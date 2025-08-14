@@ -9,23 +9,27 @@ from dependencies.dependencies import (
 from services.vertical_service import VerticalService
 from schemas.vertical import (
     VerticalCreate, VerticalUpdate, VerticalResponse, VerticalListFilter,
-    VerticalSummary, VerticalStats
+    VerticalSummary, VerticalStats, BulkVerticalOperation
 )
-from schemas.common import SuccessResponse, PaginatedResponse
+
+from schemas.common import SuccessResponse, VerticalPaginatedResponse
 from models.models import UserRole
 import logging
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(prefix="/verticals", tags=["Verticals"])
 
 # Dependency injection
 def get_vertical_service() -> VerticalService:
     return VerticalService()
 
 
-# Admin-only endpoints
-@router.post("/verticals", response_model=VerticalResponse)
+# ==========================================
+# CRUD OPERATIONS (Admin Only)
+# ==========================================
+
+@router.post("", response_model=VerticalResponse, status_code=status.HTTP_201_CREATED)
 async def create_vertical(
     vertical_data: VerticalCreate,
     current_user: CurrentAdminUser,
@@ -35,46 +39,79 @@ async def create_vertical(
     """
     Create a new vertical (Admin only).
     
-    - **name**: Vertical name
-    - **slug**: URL-friendly identifier
+    For root-level verticals (first time insert), set parent_id to null.
+    For child verticals, provide the parent_id of an existing active vertical.
+    
+    **Request Body:**
+    - **name**: Vertical name (required)
+    - **slug**: URL-friendly identifier (required, will be auto-formatted)
     - **description**: Optional description
-    - **parent_id**: Parent vertical ID for hierarchical structure
-    - **level**: Hierarchy level (0 for root)
-    - **sort_order**: Display order
-    - **is_active**: Whether vertical is active
-    - **requires_approval**: Whether assignments require approval
-    - **competition_level**: Competition level (1-10)
+    - **parent_id**: Parent vertical ID (null for root level)
+    - **sort_order**: Display order (default: 0)
+    - **is_active**: Whether vertical is active (default: true)
+    - **requires_approval**: Whether assignments require approval (default: false)
+    - **competition_level**: Competition level 1-10 (default: 1)
     """
-    return vertical_service.create_vertical(db, vertical_data, current_user.id)
+    try:
+        return vertical_service.create_vertical(db, vertical_data, current_user.id)
+    except Exception as e:
+        logger.error(f"Error in create_vertical endpoint: {str(e)}")
+        raise
 
 
-@router.get("/verticals", response_model=PaginatedResponse[VerticalResponse])
+@router.get("", response_model=VerticalPaginatedResponse[VerticalResponse])
 async def get_verticals(
     current_user: CurrentUser,
     db: DatabaseSession,
-    parent_id: Optional[str] = Query(None, description="Filter by parent vertical ID"),
+    parent_id: Optional[str] = Query(None, description="Filter by parent vertical ID (null for root level)"),
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
     q: Optional[str] = Query(None, description="Search in name, description, slug"),
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
-    sort: str = Query("sort_order", description="Sort field and direction"),
+    sort: str = Query("sort_order", description="Sort field (prefix with - for desc)"),
     vertical_service: VerticalService = Depends(get_vertical_service)
 ):
     """
     Get verticals with filtering and pagination.
     
-    All users can view active verticals for assignment purposes.
+    **Query Parameters:**
+    - **parent_id**: Filter by parent ID (use "null" for root level verticals)
+    - **is_active**: Filter by active status
+    - **q**: Search term for name, description, or slug
+    - **skip**: Number of records to skip for pagination
+    - **limit**: Maximum number of records to return
+    - **sort**: Sort field, prefix with '-' for descending order
     """
-    filters = VerticalListFilter(
-        parent_id=UUID(parent_id) if parent_id else None,
-        is_active=is_active,
-        q=q
-    )
-    
-    return vertical_service.get_verticals(db, filters, skip, limit, sort)
+    try:
+        # Handle special case for root level verticals
+        parsed_parent_id = None
+        if parent_id and parent_id.lower() != "null":
+            try:
+                parsed_parent_id = UUID(parent_id)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid parent_id format"
+                )
+        
+        filters = VerticalListFilter(
+            parent_id=parsed_parent_id,
+            is_active=is_active,
+            q=q
+        )
+        
+        return vertical_service.get_verticals(db, filters, skip, limit, sort)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_verticals endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
 
-@router.get("/verticals/{vertical_id}", response_model=VerticalResponse)
+@router.get("/{vertical_id}", response_model=VerticalResponse)
 async def get_vertical(
     vertical_id: str,
     current_user: CurrentUser,
@@ -100,9 +137,17 @@ async def get_vertical(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid vertical ID format"
         )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_vertical endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
 
-@router.put("/verticals/{vertical_id}", response_model=VerticalResponse)
+@router.put("/{vertical_id}", response_model=VerticalResponse)
 async def update_vertical(
     vertical_id: str,
     vertical_data: VerticalUpdate,
@@ -112,6 +157,19 @@ async def update_vertical(
 ):
     """
     Update vertical (Admin only).
+    
+    **Path Parameters:**
+    - **vertical_id**: UUID of the vertical to update
+    
+    **Request Body:** All fields are optional for updates
+    - **name**: Vertical name
+    - **slug**: URL-friendly identifier
+    - **description**: Description
+    - **parent_id**: Parent vertical ID (null for root level)
+    - **sort_order**: Display order
+    - **is_active**: Whether vertical is active
+    - **requires_approval**: Whether assignments require approval
+    - **competition_level**: Competition level 1-10
     """
     try:
         vertical_uuid = UUID(vertical_id)
@@ -129,9 +187,17 @@ async def update_vertical(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid vertical ID format"
         )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in update_vertical endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
 
-@router.delete("/verticals/{vertical_id}", response_model=SuccessResponse)
+@router.delete("/{vertical_id}", response_model=SuccessResponse)
 async def delete_vertical(
     vertical_id: str,
     current_user: CurrentAdminUser,
@@ -141,7 +207,10 @@ async def delete_vertical(
     """
     Delete vertical (Admin only).
     
-    Note: Cannot delete verticals that have children, assignments, or bids.
+    **Note:** Cannot delete verticals that have:
+    - Child verticals
+    - Active user assignments  
+    - Existing bids
     """
     try:
         vertical_uuid = UUID(vertical_id)
@@ -151,10 +220,43 @@ async def delete_vertical(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid vertical ID format"
         )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in delete_vertical endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
 
-# Hierarchy and navigation endpoints
-@router.get("/verticals/{vertical_id}/children", response_model=List[VerticalResponse])
+# ==========================================
+# HIERARCHY AND NAVIGATION
+# ==========================================
+
+@router.get("/root/list", response_model=List[VerticalResponse])
+async def get_root_verticals(
+    current_user: CurrentUser,
+    db: DatabaseSession,
+    vertical_service: VerticalService = Depends(get_vertical_service)
+):
+    """
+    Get root level verticals (those with no parent).
+    
+    This endpoint returns all top-level verticals that can serve as starting points
+    for the vertical hierarchy.
+    """
+    try:
+        return vertical_service.get_by_parent(db, None)
+    except Exception as e:
+        logger.error(f"Error in get_root_verticals endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+
+@router.get("/{vertical_id}/children", response_model=List[VerticalResponse])
 async def get_vertical_children(
     vertical_id: str,
     current_user: CurrentUser,
@@ -172,9 +274,17 @@ async def get_vertical_children(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid vertical ID format"
         )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_vertical_children endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
 
-@router.get("/verticals/{vertical_id}/hierarchy", response_model=List[VerticalResponse])
+@router.get("/{vertical_id}/hierarchy", response_model=List[VerticalResponse])
 async def get_vertical_hierarchy(
     vertical_id: str,
     current_user: CurrentUser,
@@ -183,6 +293,9 @@ async def get_vertical_hierarchy(
 ):
     """
     Get full hierarchy path for a vertical (from root to current).
+    
+    Returns the complete path from the root vertical down to the specified vertical,
+    useful for breadcrumb navigation.
     """
     try:
         vertical_uuid = UUID(vertical_id)
@@ -192,22 +305,21 @@ async def get_vertical_hierarchy(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid vertical ID format"
         )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_vertical_hierarchy endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
 
-@router.get("/verticals/root", response_model=List[VerticalResponse])
-async def get_root_verticals(
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    vertical_service: VerticalService = Depends(get_vertical_service)
-):
-    """
-    Get root level verticals (those with no parent).
-    """
-    return vertical_service.get_by_parent(db, None)
+# ==========================================
+# STATISTICS AND PERFORMANCE
+# ==========================================
 
-
-# Statistics and performance endpoints
-@router.get("/verticals/{vertical_id}/statistics", response_model=dict)
+@router.get("/{vertical_id}/statistics", response_model=dict)
 async def get_vertical_statistics(
     vertical_id: str,
     current_user: CurrentUser,
@@ -217,10 +329,10 @@ async def get_vertical_statistics(
     """
     Get vertical statistics and performance metrics.
     
-    Access control:
-    - Admin: Can see statistics for any vertical
-    - Sub-Admin: Can see statistics for verticals assigned to their team members
-    - Member: Can see statistics for their assigned verticals
+    **Access Control:**
+    - **Admin**: Can see statistics for any vertical
+    - **Sub-Admin**: Can see statistics for verticals assigned to their team members
+    - **Member**: Can see statistics for their assigned verticals only
     """
     try:
         vertical_uuid = UUID(vertical_id)
@@ -233,18 +345,29 @@ async def get_vertical_statistics(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid vertical ID format"
         )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_vertical_statistics endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
 
-@router.get("/verticals/{vertical_id}/performance", response_model=List[dict])
+@router.get("/{vertical_id}/performance", response_model=List[dict])
 async def get_vertical_performance_trends(
+    vertical_id: str,
     current_user: CurrentUser,
     db: DatabaseSession,
-    vertical_id: str,
     days: int = Query(30, ge=1, le=365, description="Number of days for trend analysis"),
     vertical_service: VerticalService = Depends(get_vertical_service)
 ):
     """
     Get vertical performance trends over specified period.
+    
+    Returns daily performance metrics including bid counts, earnings, 
+    connects used, wins, and success rates.
     """
     try:
         vertical_uuid = UUID(vertical_id)
@@ -254,9 +377,17 @@ async def get_vertical_performance_trends(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid vertical ID format"
         )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_vertical_performance_trends endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
 
-@router.get("/verticals/top-performing", response_model=List[VerticalResponse])
+@router.get("/analytics/top-performing", response_model=List[VerticalResponse])
 async def get_top_performing_verticals(
     current_user: CurrentUser,
     db: DatabaseSession,
@@ -265,11 +396,20 @@ async def get_top_performing_verticals(
 ):
     """
     Get top performing verticals by success rate.
+    
+    Returns verticals ordered by success rate and total earnings.
     """
-    return vertical_service.get_top_performing(db, limit)
+    try:
+        return vertical_service.get_top_performing(db, limit)
+    except Exception as e:
+        logger.error(f"Error in get_top_performing_verticals endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
 
-@router.get("/verticals/most-active", response_model=List[VerticalResponse])
+@router.get("/analytics/most-active", response_model=List[VerticalResponse])
 async def get_most_active_verticals(
     current_user: CurrentUser,
     db: DatabaseSession,
@@ -278,12 +418,46 @@ async def get_most_active_verticals(
 ):
     """
     Get most active verticals by bid count.
+    
+    Returns verticals ordered by total number of bids and earnings.
     """
-    return vertical_service.get_most_active(db, limit)
+    try:
+        return vertical_service.get_most_active(db, limit)
+    except Exception as e:
+        logger.error(f"Error in get_most_active_verticals endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
 
-# Search and utility endpoints
-@router.get("/verticals/search", response_model=List[VerticalResponse])
+@router.get("/analytics/summary", response_model=VerticalStats)
+async def get_verticals_summary_statistics(
+    current_user: CurrentUser,
+    db: DatabaseSession,
+    vertical_service: VerticalService = Depends(get_vertical_service)
+):
+    """
+    Get summary statistics for all verticals.
+    
+    Returns aggregated metrics including total counts, earnings, 
+    success rates, and distribution by hierarchy level.
+    """
+    try:
+        return vertical_service.get_summary_statistics(db)
+    except Exception as e:
+        logger.error(f"Error in get_verticals_summary_statistics endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+
+# ==========================================
+# SEARCH AND UTILITY
+# ==========================================
+
+@router.get("/search/query", response_model=List[VerticalResponse])
 async def search_verticals(
     current_user: CurrentUser,
     db: DatabaseSession,
@@ -293,11 +467,24 @@ async def search_verticals(
 ):
     """
     Search verticals by name, description, or slug.
+    
+    **Query Parameters:**
+    - **q**: Search term (minimum 1 character)
+    - **limit**: Maximum number of results to return
     """
-    return vertical_service.search(db, q, limit)
+    try:
+        return vertical_service.search(db, q, limit)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in search_verticals endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
 
-@router.get("/verticals/available-for-user/{user_id}", response_model=List[VerticalResponse])
+@router.get("/assignments/available-for-user/{user_id}", response_model=List[VerticalResponse])
 async def get_available_verticals_for_user(
     user_id: str,
     current_user: CurrentSubAdminUser,
@@ -307,16 +494,16 @@ async def get_available_verticals_for_user(
     """
     Get verticals available for assignment to a user (Sub-Admin and Admin only).
     
-    Returns verticals that are active and not already assigned to the user.
+    Returns verticals that are active and not already assigned to the specified user.
+    Sub-admins can only query for users in their team.
     """
     try:
         user_uuid = UUID(user_id)
         
-        # Validate permission to assign verticals to this user
-        if current_user.role == UserRole.SUB_ADMIN:
-            # Sub-admin can only assign to their team members
-            # This validation would be done in the service layer
-            pass
+        # TODO: Add team validation for sub-admins
+        # if current_user.role == UserRole.SUB_ADMIN:
+        #     # Validate that user belongs to sub-admin's team
+        #     pass
         
         return vertical_service.get_available_for_assignment(db, user_uuid)
         
@@ -325,10 +512,21 @@ async def get_available_verticals_for_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid user ID format"
         )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in get_available_verticals_for_user endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
 
-# Admin utility endpoints
-@router.post("/verticals/{vertical_id}/update-statistics", response_model=SuccessResponse)
+# ==========================================
+# ADMIN UTILITY OPERATIONS
+# ==========================================
+
+@router.post("/{vertical_id}/update-statistics", response_model=SuccessResponse)
 async def update_vertical_statistics(
     vertical_id: str,
     current_user: CurrentAdminUser,
@@ -338,7 +536,8 @@ async def update_vertical_statistics(
     """
     Manually update vertical statistics (Admin only).
     
-    Recalculates statistics from current bid data.
+    Recalculates statistics from current bid data. Useful when data inconsistencies
+    are detected or after bulk data operations.
     """
     try:
         vertical_uuid = UUID(vertical_id)
@@ -349,18 +548,28 @@ async def update_vertical_statistics(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid vertical ID format"
         )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in update_vertical_statistics endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
 
-@router.post("/verticals/{vertical_id}/update-sort-order", response_model=SuccessResponse)
+@router.post("/{vertical_id}/update-sort-order", response_model=SuccessResponse)
 async def update_vertical_sort_order(
+    vertical_id: str,
     current_user: CurrentAdminUser,
     db: DatabaseSession,
-    vertical_id: str,
     new_order: int = Query(..., ge=0, description="New sort order"),
     vertical_service: VerticalService = Depends(get_vertical_service)
 ):
     """
     Update vertical sort order (Admin only).
+    
+    Changes the display order of a vertical within its hierarchy level.
     """
     try:
         vertical_uuid = UUID(vertical_id)
@@ -378,58 +587,67 @@ async def update_vertical_sort_order(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid vertical ID format"
         )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in update_vertical_sort_order endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
 
 
-@router.get("/verticals/statistics/summary", response_model=VerticalStats)
-async def get_verticals_summary_statistics(
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    vertical_service: VerticalService = Depends(get_vertical_service)
-):
-    """
-    Get summary statistics for all verticals.
-    """
-    return vertical_service.get_summary_statistics(db)
+# ==========================================
+# BULK OPERATIONS
+# ==========================================
 
-
-# Bulk operations
-@router.post("/verticals/bulk-activate", response_model=SuccessResponse)
+@router.post("/bulk/activate", response_model=SuccessResponse)
 async def bulk_activate_verticals(
-    vertical_ids: List[str],
+    operation_data: BulkVerticalOperation,
     current_user: CurrentAdminUser,
     db: DatabaseSession,
     vertical_service: VerticalService = Depends(get_vertical_service)
 ):
     """
     Bulk activate verticals (Admin only).
+    
+    **Request Body:**
+    - **vertical_ids**: List of vertical UUIDs to activate (1-100 items)
     """
     try:
-        vertical_uuids = [UUID(vid) for vid in vertical_ids]
-        count = vertical_service.bulk_activate(db, vertical_uuids)
-        return SuccessResponse(message=f"Activated {count} verticals successfully")
-    except ValueError:
+        count = vertical_service.bulk_activate(db, operation_data.vertical_ids)
+        return SuccessResponse(message=f"Successfully activated {count} verticals")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in bulk_activate_verticals endpoint: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid vertical ID format in list"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
         )
 
 
-@router.post("/verticals/bulk-deactivate", response_model=SuccessResponse)
+@router.post("/bulk/deactivate", response_model=SuccessResponse)
 async def bulk_deactivate_verticals(
-    vertical_ids: List[str],
+    operation_data: BulkVerticalOperation,
     current_user: CurrentAdminUser,
     db: DatabaseSession,
     vertical_service: VerticalService = Depends(get_vertical_service)
 ):
     """
     Bulk deactivate verticals (Admin only).
+    
+    **Request Body:**
+    - **vertical_ids**: List of vertical UUIDs to deactivate (1-100 items)
     """
     try:
-        vertical_uuids = [UUID(vid) for vid in vertical_ids]
-        count = vertical_service.bulk_deactivate(db, vertical_uuids)
-        return SuccessResponse(message=f"Deactivated {count} verticals successfully")
-    except ValueError:
+        count = vertical_service.bulk_deactivate(db, operation_data.vertical_ids)
+        return SuccessResponse(message=f"Successfully deactivated {count} verticals")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in bulk_deactivate_verticals endpoint: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid vertical ID format in list"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
         )

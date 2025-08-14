@@ -1,1 +1,1393 @@
 Generic single-database configuration.
+
+# Base
+
+/api/v1
+
+---
+
+# Common (All Roles)
+
+## POST /auth/login
+
+Request
+
+json
+{
+  "email": "string",
+  "password": "string",
+  "device": {
+    "ip_address": "string",
+    "user_agent": "string",
+    "os": "string",
+    "browser": "string",
+    "browser_version": "string",
+    "device_type": "desktop|mobile|tablet"
+  }
+}
+
+
+Response
+
+json
+{
+  "access_token": "jwt",
+  "expires_in": 3600,
+  "refresh_token": "jwt",
+  "token_type": "bearer",
+  "session": {
+    "id": "uuid",
+    "status": "active|expired|invalidated|suspicious",
+    "expires_at": "datetime"
+  },
+  "user": {
+    "id": "uuid",
+    "email": "string",
+    "username": "string",
+    "first_name": "string",
+    "last_name": "string",
+    "phone": "string|null",
+    "bio": "string|null",
+    "linkedin_profile_url": "string|null",
+    "timezone": "string",
+    "role": "admin|sub_admin|member",
+    "status": "active|inactive|suspended",
+    "team_id": "uuid|null",
+    "is_active": true,
+    "is_verified": true,
+    "is_locked": false,
+    "last_login": "datetime|null",
+    "last_activity": "datetime|null",
+    "created_at": "datetime",
+    "updated_at": "datetime"
+  }
+}
+
+
+## POST /auth/refresh
+
+Request
+
+json
+{ "refresh_token": "jwt" }
+
+
+Response
+
+json
+{
+  "access_token": "jwt",
+  "expires_in": 3600,
+  "token_type": "bearer",
+  "session": {
+    "id": "uuid",
+    "status": "active",
+    "expires_at": "datetime"
+  }
+}
+
+
+## POST /auth/logout
+
+Request
+
+json
+{ "session_id": "uuid" }
+
+
+Response
+
+json
+{ "success": true }
+
+
+## POST /auth/forgot-password
+
+Request
+
+json
+{ "email": "string" }
+
+
+Response
+
+json
+{ "success": true }
+
+
+## POST /auth/reset-password
+
+Request
+
+json
+{ "token": "string", "new_password": "string" }
+
+
+Response
+
+json
+{ "success": true }
+
+
+## GET /sessions
+
+Response
+
+json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "user_id": "uuid",
+      "status": "active|expired|invalidated|suspicious",
+      "ip_address": "string|null",
+      "user_agent": "string|null",
+      "os": "string|null",
+      "browser": "string|null",
+      "browser_version": "string|null",
+      "device_type": "desktop|mobile|tablet|null",
+      "created_at": "datetime",
+      "last_activity": "datetime",
+      "expires_at": "datetime"
+    }
+  ],
+  "next_cursor": null,
+  "count": 1
+}
+
+
+## DELETE /sessions/{id}
+
+Response
+
+json
+{ "success": true }
+
+
+## GET /notifications
+
+Query: is_read, type, since
+Response
+
+json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "user_id": "uuid",
+      "type": "email|in_app|push",
+      "title": "string",
+      "message": "string",
+      "is_read": false,
+      "is_sent": true,
+      "priority": 1,
+      "entity_type": "string|null",
+      "entity_id": "uuid|null",
+      "sent_at": "datetime|null",
+      "read_at": "datetime|null",
+      "created_at": "datetime"
+    }
+  ],
+  "next_cursor": null,
+  "count": 1
+}
+
+
+## PATCH /notifications/{id}/read
+
+Request
+
+json
+{ "is_read": true }
+
+
+Response
+
+json
+{
+  "id": "uuid",
+  "is_read": true,
+  "read_at": "datetime"
+}
+
+
+---
+
+# Admin APIs (System-wide authority)
+
+## Users (Admin can CRUD any user)
+
+### GET /users
+
+Query: role, status, team_id, q, pagination
+Response
+
+json
+{ "items": [ { / User object (same as auth.login.user) / } ], "next_cursor": null, "count": 1 }
+
+
+### POST /users
+
+Request
+
+json
+{
+  "email": "string",
+  "username": "string",
+  "password": "string",
+  "first_name": "string",
+  "last_name": "string",
+  "phone": "string|null",
+  "bio": "string|null",
+  "linkedin_profile_url": "string|null",
+  "timezone": "string",
+  "role": "admin|sub_admin|member",
+  "status": "active|inactive|suspended",
+  "team_id": "uuid|null"
+}
+
+
+Response
+
+json
+{ / User object / }
+
+
+### GET /users/{id}
+
+Response
+
+json
+{ / User object / }
+
+
+### PUT /users/{id}
+
+Request
+
+json
+{
+  "username": "string",
+  "first_name": "string",
+  "last_name": "string",
+  "phone": "string|null",
+  "bio": "string|null",
+  "linkedin_profile_url": "string|null",
+  "timezone": "string",
+  "role": "admin|sub_admin|member",
+  "status": "active|inactive|suspended",
+  "team_id": "uuid|null",
+  "is_active": true,
+  "is_verified": true,
+  "is_locked": false
+}
+
+
+Response
+
+json
+{ / User object / }
+
+
+### DELETE /users/{id}
+
+Response
+
+json
+{ "success": true }
+
+
+## Teams
+
+### GET /teams
+
+Query: status, sub_admin_id, q, pagination
+Response
+
+json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "name": "string",
+      "description": "string|null",
+      "sub_admin_id": "uuid",
+      "status": "active|inactive|suspended",
+      "total_earn": "number|string|null",
+      "total_connect_used": 0,
+      "total_bids": 0,
+      "created_at": "datetime",
+      "updated_at": "datetime",
+      "created_by_id": "uuid"
+    }
+  ],
+  "next_cursor": null,
+  "count": 1
+}
+
+
+### POST /teams
+
+Request
+
+json
+{
+  "name": "string",
+  "description": "string|null",
+  "sub_admin_id": "uuid",
+  "status": "active|inactive|suspended"
+}
+
+
+Response
+
+json
+{ / Team object / }
+
+
+### GET /teams/{id}
+
+Response
+
+json
+{ / Team object / }
+
+
+### PUT /teams/{id}
+
+Request
+
+json
+{
+  "name": "string",
+  "description": "string|null",
+  "sub_admin_id": "uuid",
+  "status": "active|inactive|suspended"
+}
+
+
+Response
+
+json
+{ / Team object / }
+
+
+### DELETE /teams/{id}
+
+Response
+
+json
+{ "success": true }
+
+
+### Team Goals (Admin can manage)
+
+#### GET /teams/{id}/goals
+
+Response
+
+json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "team_id": "uuid",
+      "goal_name": "string",
+      "goal_type": "string",
+      "target_value": "number|string",
+      "current_value": "number|string",
+      "unit": "string",
+      "period_start": "date",
+      "period_end": "date",
+      "is_active": true,
+      "is_achieved": false,
+      "created_at": "datetime",
+      "updated_at": "datetime",
+      "created_by_id": "uuid"
+    }
+  ],
+  "next_cursor": null,
+  "count": 1
+}
+
+
+#### POST /teams/{id}/goals
+
+Request
+
+json
+{
+  "goal_name": "string",
+  "goal_type": "string",
+  "target_value": "number|string",
+  "current_value": "number|string",
+  "unit": "string",
+  "period_start": "date",
+  "period_end": "date",
+  "is_active": true
+}
+
+
+Response
+
+json
+{ / TeamGoal object / }
+
+
+#### PUT /teams/{id}/goals/{goal_id}
+
+Request
+
+json
+{
+  "goal_name": "string",
+  "goal_type": "string",
+  "target_value": "number|string",
+  "current_value": "number|string",
+  "unit": "string",
+  "period_start": "date",
+  "period_end": "date",
+  "is_active": true,
+  "is_achieved": false
+}
+
+
+Response
+
+json
+{ / TeamGoal object / }
+
+
+#### DELETE /teams/{id}/goals/{goal_id}
+
+Response
+
+json
+{ "success": true }
+
+
+## Verticals (Admin can manage)
+
+### GET /verticals
+
+Query: parent_id, is_active, q, pagination
+Response
+
+json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "name": "string",
+      "slug": "string",
+      "description": "string|null",
+      "parent_id": "uuid|null",
+      "level": 0,
+      "sort_order": 0,
+      "is_active": true,
+      "requires_approval": false,
+      "total_earn": "number|string|null",
+      "connect_used": 0,
+      "total_bids": 0,
+      "avg_project_value": "number|string|null",
+      "competition_level": 1,
+      "success_rate": "number|string|null",
+      "created_at": "datetime",
+      "updated_at": "datetime",
+      "created_by_id": "uuid"
+    }
+  ],
+  "next_cursor": null,
+  "count": 1
+}
+
+
+### POST /verticals
+
+Request
+
+json
+{
+  "name": "string",
+  "slug": "string",
+  "description": "string|null",
+  "parent_id": "uuid|null",
+  "level": 0,
+  "sort_order": 0,
+  "is_active": true,
+  "requires_approval": false,
+  "competition_level": 1
+}
+
+
+Response
+
+json
+{ / Vertical object / }
+
+
+### GET /verticals/{id}
+
+Response
+
+json
+{ / Vertical object / }
+
+
+### PUT /verticals/{id}
+
+Request
+
+json
+{
+  "name": "string",
+  "slug": "string",
+  "description": "string|null",
+  "parent_id": "uuid|null",
+  "level": 0,
+  "sort_order": 0,
+  "is_active": true,
+  "requires_approval": false,
+  "competition_level": 1
+}
+
+
+Response
+
+json
+{ / Vertical object / }
+
+
+### DELETE /verticals/{id}
+
+Response
+
+json
+{ "success": true }
+
+
+## Vertical Assignments (Admin can assign for any user)
+
+### GET /users/{user_id}/verticals
+
+Response
+
+json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "user_id": "uuid",
+      "vertical_id": "uuid",
+      "assigned_at": "datetime",
+      "assigned_by_id": "uuid",
+      "is_active": true,
+      "total_earn": "number|string|null",
+      "connect_used": 0,
+      "total_bids": 0,
+      "success_rate": "number|string|null",
+      "notes": "string|null",
+      "vertical": { "id": "uuid", "name": "string", "slug": "string" }
+    }
+  ],
+  "next_cursor": null,
+  "count": 1
+}
+
+
+### POST /users/{user_id}/verticals
+
+Request
+
+json
+{
+  "vertical_ids": ["uuid", "uuid"],
+  "is_active": true,
+  "notes": "string|null"
+}
+
+
+Response
+
+json
+{ "items": [ / UserVertical objects / ], "count": 2 }
+
+
+### DELETE /users/{user_id}/verticals/{vertical_id}
+
+Response
+
+json
+{ "success": true }
+
+
+## Bids (Admin can manage globally)
+
+### GET /bids
+
+Query: status, team_id, member_id, vertical_id, budget_type, date_from, date_to, q, pagination
+Response
+
+json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "job_title": "string",
+      "job_url": "string|null",
+      "job_description": "string|null",
+      "client_name": "string|null",
+      "vertical_id": "uuid",
+      "member_id": "uuid",
+      "team_id": "uuid",
+      "budget_type": "fixed|hourly",
+      "budget_min": "number|string|null",
+      "budget_max": "number|string|null",
+      "hourly_rate": "number|string|null",
+      "estimated_hours": 0,
+      "connects_used": 1,
+      "boost_connects_used": 0,
+      "connect_cost": "number|string",
+      "total_cost": "number|string",
+      "status": "not_viewed|viewed|declined|responded|closed|won",
+      "submitted_at": "datetime",
+      "last_status_change": "datetime",
+      "proposal_text": "string|null",
+      "cover_letter": "string|null",
+      "is_featured": false,
+      "competition_level": 1,
+      "notes": "string|null",
+      "created_at": "datetime",
+      "updated_at": "datetime",
+      "derived": {
+        "estimated_value": "number|string|null",
+        "days_since_submission": 3,
+        "can_edit": true
+      }
+    }
+  ],
+  "next_cursor": null,
+  "count": 1
+}
+
+
+### POST /bids
+
+Request
+
+json
+{
+  "job_title": "string",
+  "job_url": "string|null",
+  "job_description": "string|null",
+  "client_name": "string|null",
+  "vertical_id": "uuid",
+  "member_id": "uuid",
+  "team_id": "uuid",
+  "budget_type": "fixed|hourly",
+  "budget_min": "number|string|null",
+  "budget_max": "number|string|null",
+  "hourly_rate": "number|string|null",
+  "estimated_hours": 0,
+  "connects_used": 1,
+  "boost_connects_used": 0,
+  "proposal_text": "string|null",
+  "cover_letter": "string|null",
+  "is_featured": false,
+  "competition_level": 1,
+  "notes": "string|null"
+}
+
+
+Response
+
+json
+{ / Bid object / }
+
+
+### GET /bids/{id}
+
+Response
+
+json
+{ / Bid object / }
+
+
+### PUT /bids/{id}
+
+Request
+
+json
+{
+  "job_title": "string",
+  "job_url": "string|null",
+  "job_description": "string|null",
+  "client_name": "string|null",
+  "vertical_id": "uuid",
+  "member_id": "uuid",
+  "team_id": "uuid",
+  "budget_type": "fixed|hourly",
+  "budget_min": "number|string|null",
+  "budget_max": "number|string|null",
+  "hourly_rate": "number|string|null",
+  "estimated_hours": 0,
+  "connects_used": 1,
+  "boost_connects_used": 0,
+  "proposal_text": "string|null",
+  "cover_letter": "string|null",
+  "is_featured": false,
+  "competition_level": 1,
+  "notes": "string|null",
+  "status": "not_viewed|viewed|declined|responded|closed|won"
+}
+
+
+Response
+
+json
+{ / Bid object / }
+
+
+### DELETE /bids/{id}
+
+Response
+
+json
+{ "success": true }
+
+
+### PATCH /bids/{id}/status
+
+Request
+
+json
+{ "status": "not_viewed|viewed|declined|responded|closed|won" }
+
+
+Response
+
+json
+{ / Bid object / }
+
+
+## Receivables (Admin can manage globally)
+
+### GET /receivables
+
+Query: team_id, status, date_from, date_to, client_name, pagination
+Response
+
+json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "bid_id": "uuid",
+      "team_id": "uuid",
+      "client_name": "string",
+      "project_title": "string",
+      "contract_value": "number|string",
+      "expected_payment_date": "date",
+      "actual_payment_date": "date|null",
+      "payment_amount": "number|string|null",
+      "status": "pending|partial|paid|overdue",
+      "currency": "USD",
+      "created_at": "datetime",
+      "updated_at": "datetime",
+      "created_by_id": "uuid",
+      "derived": { "is_overdue": false, "days_overdue": 0 }
+    }
+  ],
+  "next_cursor": null,
+  "count": 1
+}
+
+
+### POST /receivables
+
+Request
+
+json
+{
+  "bid_id": "uuid",
+  "team_id": "uuid",
+  "client_name": "string",
+  "project_title": "string",
+  "contract_value": "number|string",
+  "expected_payment_date": "date",
+  "currency": "USD"
+}
+
+
+Response
+
+json
+{ / Receivable object / }
+
+
+### GET /receivables/{id}
+
+Response
+
+json
+{ / Receivable object / }
+
+
+### PUT /receivables/{id}
+
+Request
+
+json
+{
+  "project_title": "string",
+  "expected_payment_date": "date",
+  "actual_payment_date": "date|null",
+  "payment_amount": "number|string|null",
+  "status": "pending|partial|paid|overdue",
+  "currency": "USD"
+}
+
+
+Response
+
+json
+{ / Receivable object / }
+
+
+### PATCH /receivables/{id}/status
+
+Request
+
+json
+{ "status": "pending|partial|paid|overdue" }
+
+
+Response
+
+json
+{ / Receivable object / }
+
+
+### DELETE /receivables/{id}
+
+Response
+
+json
+{ "success": true }
+
+
+## Analytics & Reports (Admin scope)
+
+### GET /analytics/dashboard
+
+Query: scope=admin, range=day|week|month|custom, from, to
+Response
+
+json
+{
+  "kpis": {
+    "total_bids": 0,
+    "wins": 0,
+    "win_rate": "number|string",
+    "connect_spend": "number|string",
+    "revenue": "number|string",
+    "profit_margin": "number|string"
+  },
+  "charts": {
+    "bids_over_time": [{ "date": "date", "bids": 0, "wins": 0 }],
+    "revenue_over_time": [{ "date": "date", "revenue": "number|string" }],
+    "vertical_breakdown": [{ "vertical_id": "uuid", "name": "string", "wins": 0, "revenue": "number|string" }]
+  }
+}
+
+
+### GET /analytics/reports
+
+Query: type=bid_performance|financial|operational, format=json, filters
+Response
+
+json
+{ "type": "string", "generated_at": "datetime", "data": {} }
+
+
+### POST /analytics/export
+
+Request
+
+json
+{
+  "type": "bid_performance|financial|operational",
+  "format": "csv|xlsx|pdf|json",
+  "filters": { "team_id": "uuid|null", "range": { "from": "date", "to": "date" } }
+}
+
+
+Response
+
+json
+{
+  "export_id": "uuid",
+  "status": "queued|processing|ready",
+  "download_url": "string|null"
+}
+
+
+## Audit & Security (Admin only)
+
+### GET /audit-logs
+
+Query: user_id, action, entity_type, date_from, date_to, ip, pagination
+Response
+
+json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "action": "create|update|delete|login|logout|assign_vertical|remove_vertical|status_change",
+      "entity_type": "string",
+      "entity_id": "uuid|null",
+      "user_id": "uuid|null",
+      "session_id": "uuid|null",
+      "ip_address": "string|null",
+      "user_agent": "string|null",
+      "description": "string|null",
+      "risk_level": 1,
+      "timestamp": "datetime"
+    }
+  ],
+  "next_cursor": null,
+  "count": 1
+}
+
+
+### GET /security-events
+
+Query: event_type, severity, user_id, resolved, pagination
+Response
+
+json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "event_type": "login_initiated|login_completed|login_failed|logout|session_expired|password_changed|password_reset_initiated|password_reset_completed|password_reset_failed|account_locked|account_unlocked|suspicious_activity|unauthorized_access",
+      "severity": 1,
+      "user_id": "uuid|null",
+      "session_id": "uuid|null",
+      "ip_address": "string|null",
+      "user_agent": "string|null",
+      "description": "string",
+      "is_resolved": false,
+      "timestamp": "datetime"
+    }
+  ],
+  "next_cursor": null,
+  "count": 1
+}
+
+
+---
+
+# Sub-Admin APIs (Scoped to own team)
+
+> Sub-Admin can view/manage within their team_id. Filters must include/resolve to their team.
+
+## Team (read-only for structure, includes members)
+
+### GET /teams/{id}
+
+Response
+
+json
+{ / Team object / }
+
+
+### GET /teams/{id}/members
+
+Response
+
+json
+{ "items": [ { / User object (member) / } ], "next_cursor": null, "count": 1 }
+
+
+### GET /teams/{id}/goals
+
+Response
+
+json
+{ "items": [ { / TeamGoal object / } ], "next_cursor": null, "count": 1 }
+
+
+## Verticals (browse only)
+
+### GET /verticals
+
+Query: parent_id, is_active, q, pagination
+Response
+
+json
+{ "items": [ { / Vertical object / } ], "next_cursor": null, "count": 1 }
+
+
+## Vertical Assignments (for members of own team)
+
+### GET /users/{user_id}/verticals
+
+Response
+
+json
+{ "items": [ { / UserVertical object / } ], "next_cursor": null, "count": 1 }
+
+
+### POST /users/{user_id}/verticals
+
+Request
+
+json
+{ "vertical_ids": ["uuid"], "is_active": true, "notes": "string|null" }
+
+
+Response
+
+json
+{ "items": [ / UserVertical objects / ], "count": 1 }
+
+
+### DELETE /users/{user_id}/verticals/{vertical_id}
+
+Response
+
+json
+{ "success": true }
+
+
+## Bids (team-scoped list; create/update typically by members, but Sub-Admin may update per policy)
+
+### GET /bids
+
+Query: team_id (must be Sub-Admin team), status, member_id, vertical_id, budget_type, date_from, date_to, q, pagination
+Response
+
+json
+{ "items": [ { / Bid object / } ], "next_cursor": null, "count": 1 }
+
+
+### PUT /bids/{id}
+
+Request
+
+json
+{
+  "job_title": "string",
+  "job_url": "string|null",
+  "job_description": "string|null",
+  "client_name": "string|null",
+  "vertical_id": "uuid",
+  "member_id": "uuid",
+  "team_id": "uuid",
+  "budget_type": "fixed|hourly",
+  "budget_min": "number|string|null",
+  "budget_max": "number|string|null",
+  "hourly_rate": "number|string|null",
+  "estimated_hours": 0,
+  "connects_used": 1,
+  "boost_connects_used": 0,
+  "proposal_text": "string|null",
+  "cover_letter": "string|null",
+  "is_featured": false,
+  "competition_level": 1,
+  "notes": "string|null",
+  "status": "not_viewed|viewed|declined|responded|closed|won"
+}
+
+
+Response
+
+json
+{ / Bid object / }
+
+
+### PATCH /bids/{id}/status
+
+Request
+
+json
+{ "status": "not_viewed|viewed|declined|responded|closed|won" }
+
+
+Response
+
+json
+{ / Bid object / }
+
+
+## Receivables (manage for own team)
+
+### GET /receivables
+
+Query: team_id (must be own), status, date_from, date_to, client_name, pagination
+Response
+
+json
+{ "items": [ { / Receivable object / } ], "next_cursor": null, "count": 1 }
+
+
+### POST /receivables
+
+Request
+
+json
+{
+  "bid_id": "uuid",
+  "team_id": "uuid",
+  "client_name": "string",
+  "project_title": "string",
+  "contract_value": "number|string",
+  "expected_payment_date": "date",
+  "currency": "USD"
+}
+
+
+Response
+
+json
+{ / Receivable object / }
+
+
+### GET /receivables/{id}
+
+Response
+
+json
+{ / Receivable object / }
+
+
+### PUT /receivables/{id}
+
+Request
+
+json
+{
+  "project_title": "string",
+  "expected_payment_date": "date",
+  "actual_payment_date": "date|null",
+  "payment_amount": "number|string|null",
+  "status": "pending|partial|paid|overdue",
+  "currency": "USD"
+}
+
+
+Response
+
+json
+{ / Receivable object / }
+
+
+### PATCH /receivables/{id}/status
+
+Request
+
+json
+{ "status": "pending|partial|paid|overdue" }
+
+
+Response
+
+json
+{ / Receivable object / }
+
+
+### DELETE /receivables/{id}
+
+Response
+
+json
+{ "success": true }
+
+
+## Analytics (team scope)
+
+### GET /analytics/dashboard
+
+Query: scope=team, team_id (own), range=day|week|month|custom, from, to
+Response
+
+json
+{
+  "kpis": {
+    "total_bids": 0,
+    "wins": 0,
+    "win_rate": "number|string",
+    "connect_spend": "number|string",
+    "revenue": "number|string",
+    "profit_margin": "number|string"
+  },
+  "charts": {
+    "bids_over_time": [{ "date": "date", "bids": 0, "wins": 0 }],
+    "revenue_over_time": [{ "date": "date", "revenue": "number|string" }],
+    "vertical_breakdown": [{ "vertical_id": "uuid", "name": "string", "wins": 0, "revenue": "number|string" }]
+  }
+}
+
+
+### POST /analytics/export
+
+Request
+
+json
+{
+  "type": "bid_performance|financial|operational",
+  "format": "csv|xlsx|pdf|json",
+  "filters": { "team_id": "uuid", "range": { "from": "date", "to": "date" } }
+}
+
+
+Response
+
+json
+{ "export_id": "uuid", "status": "queued|processing|ready", "download_url": "string|null" }
+
+
+---
+
+# Member APIs (Personal scope)
+
+## Verticals (assigned to the member)
+
+### GET /users/{user_id}/verticals
+
+Response
+
+json
+{ "items": [ { / UserVertical object / } ], "next_cursor": null, "count": 1 }
+
+
+## Bids (member can CRUD own bids within 5-day edit window)
+
+### GET /bids
+
+Query: member_id (self), status, vertical_id, budget_type, date_from, date_to, q, pagination
+Response
+
+json
+{ "items": [ { / Bid object / } ], "next_cursor": null, "count": 1 }
+
+
+### POST /bids
+
+Request
+
+json
+{
+  "job_title": "string",
+  "job_url": "string|null",
+  "job_description": "string|null",
+  "client_name": "string|null",
+  "vertical_id": "uuid",
+  "member_id": "uuid",
+  "team_id": "uuid",
+  "budget_type": "fixed|hourly",
+  "budget_min": "number|string|null",
+  "budget_max": "number|string|null",
+  "hourly_rate": "number|string|null",
+  "estimated_hours": 0,
+  "connects_used": 1,
+  "boost_connects_used": 0,
+  "proposal_text": "string|null",
+  "cover_letter": "string|null",
+  "is_featured": false,
+  "competition_level": 1,
+  "notes": "string|null"
+}
+
+
+Response
+
+json
+{ / Bid object / }
+
+
+### GET /bids/{id}
+
+Response
+
+json
+{ / Bid object / }
+
+
+### PUT /bids/{id}
+
+Request (allowed if derived.can_edit is true; otherwise subject to Sub-Admin rules)
+
+json
+{
+  "job_title": "string",
+  "job_url": "string|null",
+  "job_description": "string|null",
+  "client_name": "string|null",
+  "vertical_id": "uuid",
+  "budget_type": "fixed|hourly",
+  "budget_min": "number|string|null",
+  "budget_max": "number|string|null",
+  "hourly_rate": "number|string|null",
+  "estimated_hours": 0,
+  "connects_used": 1,
+  "boost_connects_used": 0,
+  "proposal_text": "string|null",
+  "cover_letter": "string|null",
+  "is_featured": false,
+  "competition_level": 1,
+  "notes": "string|null",
+  "status": "not_viewed|viewed|declined|responded|closed|won"
+}
+
+
+Response
+
+json
+{ / Bid object / }
+
+
+### DELETE /bids/{id}
+
+Response
+
+json
+{ "success": true }
+
+
+## Analytics (personal)
+
+### GET /analytics/dashboard
+
+Query: scope=member, user_id (self), range=day|week|month|custom, from, to
+Response
+
+json
+{
+  "kpis": {
+    "total_bids": 0,
+    "wins": 0,
+    "win_rate": "number|string",
+    "connect_spend": "number|string",
+    "revenue": "number|string",
+    "profit_margin": "number|string"
+  },
+  "charts": {
+    "bids_over_time": [{ "date": "date", "bids": 0, "wins": 0 }],
+    "vertical_breakdown": [{ "vertical_id": "uuid", "name": "string", "wins": 0 }]
+  }
+}
+
+
+---
+
+## Notes on Pagination & Envelopes (applies to all list endpoints)
+
+Query params: limit (int, default 20), cursor (string), sort (e.g., -created_at), plus endpoint-specific filters.
+List response:
+
+json
+{ "items": [ / ... / ], "next_cursor": "string|null", "count": 20 }
+

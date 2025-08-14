@@ -61,3 +61,122 @@ class ExportResponse(BaseModel):
     status: str = Field(pattern="^(queued|processing|ready)$")
     download_url: Optional[str] = None
 
+
+class VerticalSuccessResponse(BaseModel):
+    """Standard success response."""
+    success: bool = True
+    message: str = "Operation completed successfully"
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class VerticalErrorResponse(BaseModel):
+    """Standard error response."""
+    success: bool = False
+    error: str
+    detail: Optional[str] = None
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class VerticalPaginatedResponse(BaseModel, Generic[T]):
+    """Generic paginated response."""
+    items: List[T]
+    total: int = Field(..., ge=0, description="Total number of items")
+    skip: int = Field(..., ge=0, description="Number of items skipped")
+    limit: int = Field(..., ge=1, description="Maximum number of items returned")
+    has_next: bool = Field(..., description="Whether there are more items")
+    has_prev: bool = Field(..., description="Whether there are previous items")
+    page: Optional[int] = Field(None, description="Current page number (if applicable)")
+    total_pages: Optional[int] = Field(None, description="Total number of pages (if applicable)")
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        # Calculate page numbers if not provided
+        if self.page is None and self.limit > 0:
+            self.page = (self.skip // self.limit) + 1
+        if self.total_pages is None and self.limit > 0:
+            self.total_pages = (self.total + self.limit - 1) // self.limit
+
+
+class BaseFilter(BaseModel):
+    """Base filter class for common filtering parameters."""
+    is_active: Optional[bool] = Field(None, description="Filter by active status")
+    created_after: Optional[datetime] = Field(None, description="Filter items created after this date")
+    created_before: Optional[datetime] = Field(None, description="Filter items created before this date")
+    q: Optional[str] = Field(None, description="Search query")
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class SortOptions(BaseModel):
+    """Standard sorting options."""
+    field: str = Field(..., description="Field to sort by")
+    direction: str = Field("asc", pattern="^(asc|desc)$", description="Sort direction: asc or desc")
+
+
+class MetadataResponse(BaseModel):
+    """Response with metadata information."""
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    created_by_id: Optional[str] = None
+    updated_by_id: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class BulkOperationResponse(BaseModel):
+    """Response for bulk operations."""
+    success_count: int = Field(..., ge=0, description="Number of successful operations")
+    failed_count: int = Field(..., ge=0, description="Number of failed operations")
+    total_count: int = Field(..., ge=0, description="Total number of operations attempted")
+    errors: Optional[List[str]] = Field(None, description="List of error messages for failed operations")
+    message: str = "Bulk operation completed"
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        if 'total_count' not in data:
+            self.total_count = self.success_count + self.failed_count
+
+
+class ValidationErrorResponse(BaseModel):
+    """Validation error response."""
+    success: bool = False
+    error: str = "Validation Error"
+    detail: str
+    field_errors: Optional[dict] = None
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class HealthCheckResponse(BaseModel):
+    """Health check response."""
+    status: str = "healthy"
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    version: Optional[str] = None
+    environment: Optional[str] = None
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
