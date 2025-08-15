@@ -74,24 +74,25 @@ class VerticalResponse(BaseModel):
     slug: str
     description: Optional[str] = None
     parent_id: Optional[UUID] = None
-    level: int
-    sort_order: int
-    is_active: bool
-    requires_approval: bool
-    total_earn: Optional[Decimal] = Field(default=0)
+    level: int = Field(default=0)
+    sort_order: int = Field(default=0)
+    is_active: bool = Field(default=True)
+    requires_approval: bool = Field(default=False)
+    total_earn: Optional[Decimal] = Field(default=Decimal('0.00'))
     connect_used: int = Field(default=0)
     total_bids: int = Field(default=0)
-    avg_project_value: Optional[Decimal] = None
-    competition_level: int
-    success_rate: Optional[Decimal] = None
-    created_at: datetime
+    avg_project_value: Optional[Decimal] = Field(default=None)
+    competition_level: int = Field(default=1, ge=1, le=5)
+    success_rate: Optional[Decimal] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = None
     created_by_id: UUID
 
     class Config:
         from_attributes = True
         json_encoders = {
-            Decimal: lambda v: float(v) if v is not None else None
+            Decimal: lambda v: float(v) if v is not None else None,
+            datetime: lambda v: v.isoformat() if v is not None else None
         }
 
 

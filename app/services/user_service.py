@@ -309,8 +309,8 @@ class UserService(IUserService):
             return []
 
     def assign_verticals(self, db: Session, user_id: UUID, assignment_data: UserVerticalAssign,
-                        assigned_by_id: UUID, requesting_user_role: str,
-                        requesting_user_team_id: Optional[UUID] = None) -> List[UserVerticalResponse]:
+                    assigned_by_id: UUID, requesting_user_role: str,
+                    requesting_user_team_id: Optional[UUID] = None) -> List[UserVerticalResponse]:
         """Assign verticals to user."""
         try:
             # Validate permission
@@ -322,10 +322,41 @@ class UserService(IUserService):
                     detail="Insufficient permissions to assign verticals"
                 )
             
+            # Validate that all vertical IDs exist and are active
+            from repositories.vertical_repository import VerticalRepository
+            vertical_repo = VerticalRepository()
+            
+            for vertical_id in assignment_data.vertical_ids:
+                vertical = vertical_repo.get_by_id(db, vertical_id)
+                if not vertical:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Vertical with ID {vertical_id} not found"
+                    )
+                if not vertical.is_active:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Vertical '{vertical.name}' is not active and cannot be assigned"
+                    )
+            
+            # Validate that user exists
+            user = self.user_repo.get_by_id(db, user_id)
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User not found"
+                )
+            
             # Assign verticals
             assignments = self.user_repo.assign_verticals(
                 db, user_id, assignment_data.vertical_ids, assigned_by_id, assignment_data.notes
             )
+            
+            if not assignments:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to assign verticals"
+                )
             
             # Log vertical assignments
             for assignment in assignments:
@@ -333,6 +364,7 @@ class UserService(IUserService):
                     db, AuditAction.ASSIGN_VERTICAL, "user_vertical", assignment.id,
                     assigned_by_id, None, None, None,
                     f"Vertical assigned to user: {assignment.vertical_id}",
+                    old_values={},
                     new_values={
                         "user_id": str(user_id),
                         "vertical_id": str(assignment.vertical_id),
@@ -346,8 +378,11 @@ class UserService(IUserService):
             raise
         except Exception as e:
             logger.error(f"Error assigning verticals to user {user_id}: {e}")
-            return []
-
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Vertical assignment failed"
+            )
+        
     def remove_vertical(self, db: Session, user_id: UUID, vertical_id: UUID,
                        requesting_user_id: UUID, requesting_user_role: str,
                        requesting_user_team_id: Optional[UUID] = None) -> SuccessResponse:
@@ -378,7 +413,8 @@ class UserService(IUserService):
                 old_values={
                     "user_id": str(user_id),
                     "vertical_id": str(vertical_id)
-                }
+                },
+                new_values={}
             )
             
             return SuccessResponse(message="Vertical assignment removed successfully")

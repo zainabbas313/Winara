@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from interface.Irepositories.vertical_repository import IVerticalRepository
 from models.models import Vertical, Bid, UserVertical, BidStatus, User
 from schemas.vertical import VerticalCreate, VerticalUpdate, VerticalListFilter
-from schemas.common import PaginatedResponse
+from schemas.common import PaginatedResponse, VerticalPaginatedResponse
 import logging
 
 logger = logging.getLogger(__name__)
@@ -67,7 +67,7 @@ class VerticalRepository(IVerticalRepository):
             return None
     
     def get_all(self, db: Session, filters: VerticalListFilter, skip: int = 0, 
-                limit: int = 20, sort_by: str = "sort_order") -> PaginatedResponse:
+            limit: int = 20, sort_by: str = "sort_order") -> VerticalPaginatedResponse:
         """Get all verticals with filters and pagination."""
         try:
             query = db.query(Vertical)
@@ -108,13 +108,11 @@ class VerticalRepository(IVerticalRepository):
             # Apply pagination
             items = query.offset(skip).limit(limit).all()
             
-            return PaginatedResponse(
+            return VerticalPaginatedResponse.create(
                 items=items,
                 total=total,
                 skip=skip,
-                limit=limit,
-                has_next=skip + limit < total,
-                has_prev=skip > 0
+                limit=limit
             )
             
         except Exception as e:
@@ -268,12 +266,12 @@ class VerticalRepository(IVerticalRepository):
                 func.count(Bid.id).label('total_bids'),
                 func.avg(
                     case(
-                        [(Bid.budget_type == 'fixed', Bid.budget_max)],
+                        (Bid.budget_type == 'fixed', Bid.budget_max),
                         else_=(Bid.hourly_rate * Bid.estimated_hours)
                     )
                 ).label('avg_project_value'),
                 func.count(
-                    case([(Bid.status == BidStatus.WON, 1)])
+                    case((Bid.status == BidStatus.WON, 1))
                 ).label('won_bids')
             )
             .filter(Bid.vertical_id == vertical_id)

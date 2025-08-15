@@ -9,7 +9,7 @@ from schemas.vertical import (
     VerticalCreate, VerticalUpdate, VerticalResponse, VerticalListFilter,
     VerticalStats, VerticalSummary
 )
-from schemas.common import SuccessResponse, PaginatedResponse
+from schemas.common import SuccessResponse, PaginatedResponse, VerticalPaginatedResponse
 from repositories.vertical_repository import VerticalRepository
 import logging
 
@@ -69,18 +69,16 @@ class VerticalService(IVerticalService):
             return None
     
     def get_verticals(self, db: Session, filters: VerticalListFilter, skip: int = 0,
-                     limit: int = 20, sort_by: str = "sort_order") -> PaginatedResponse[VerticalResponse]:
+                 limit: int = 20, sort_by: str = "sort_order") -> VerticalPaginatedResponse[VerticalResponse]:
         """Get all verticals with filters and pagination."""
         try:
             result = self.repository.get_all(db, filters, skip, limit, sort_by)
             
-            return PaginatedResponse(
+            return VerticalPaginatedResponse.create(
                 items=[self._to_response(item) for item in result.items],
                 total=result.total,
                 skip=result.skip,
-                limit=result.limit,
-                has_next=result.has_next,
-                has_prev=result.has_prev
+                limit=result.limit
             )
         except Exception as e:
             logger.error(f"Error getting verticals: {str(e)}")

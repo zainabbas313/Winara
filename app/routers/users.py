@@ -209,8 +209,6 @@ async def get_user_verticals(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid user ID format"
         )
-
-
 @router.post("/users/{user_id}/verticals", response_model=List[UserVerticalResponse])
 async def assign_verticals_to_user(
     user_id: str,
@@ -228,6 +226,21 @@ async def assign_verticals_to_user(
     """
     try:
         user_uuid = UUID(user_id)
+        
+        # Validate that vertical_ids are not empty
+        if not assignment_data.vertical_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least one vertical ID must be provided"
+            )
+        
+        # Validate that vertical_ids are different from user_id
+        if user_uuid in assignment_data.vertical_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User ID cannot be used as vertical ID"
+            )
+        
         return user_service.assign_verticals(
             db, user_uuid, assignment_data, current_user.id,
             current_user.role.value, current_user.team_id
@@ -236,6 +249,14 @@ async def assign_verticals_to_user(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid user ID format"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in assign_verticals_to_user endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
         )
 
 

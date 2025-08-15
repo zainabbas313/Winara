@@ -86,25 +86,40 @@ class VerticalErrorResponse(BaseModel):
             datetime: lambda v: v.isoformat()
         }
 
-
 class VerticalPaginatedResponse(BaseModel, Generic[T]):
-    """Generic paginated response."""
-    items: List[T]
-    total: int = Field(..., ge=0, description="Total number of items")
-    skip: int = Field(..., ge=0, description="Number of items skipped")
-    limit: int = Field(..., ge=1, description="Maximum number of items returned")
-    has_next: bool = Field(..., description="Whether there are more items")
-    has_prev: bool = Field(..., description="Whether there are previous items")
-    page: Optional[int] = Field(None, description="Current page number (if applicable)")
-    total_pages: Optional[int] = Field(None, description="Total number of pages (if applicable)")
+    """Generic paginated response with proper default value handling."""
+    items: List[T] = Field(default_factory=list)
+    total: int = Field(default=0, ge=0, description="Total number of items")
+    skip: int = Field(default=0, ge=0, description="Number of items skipped")
+    limit: int = Field(default=20, ge=1, description="Maximum number of items returned")
+    has_next: bool = Field(default=False, description="Whether there are more items")
+    has_prev: bool = Field(default=False, description="Whether there are previous items")
+    page: Optional[int] = Field(default=None, description="Current page number (if applicable)")
+    total_pages: Optional[int] = Field(default=None, description="Total number of pages (if applicable)")
 
     def __init__(self, **data):
         super().__init__(**data)
-        # Calculate page numbers if not provided
+        # Ensure defaults are calculated
         if self.page is None and self.limit > 0:
-            self.page = (self.skip // self.limit) + 1
+            self.page = max(1, (self.skip // self.limit) + 1)
         if self.total_pages is None and self.limit > 0:
-            self.total_pages = (self.total + self.limit - 1) // self.limit
+            self.total_pages = max(1, (self.total + self.limit - 1) // self.limit)
+        
+        # Calculate has_next and has_prev if not set
+        if 'has_next' not in data:
+            self.has_next = (self.skip + self.limit) < self.total
+        if 'has_prev' not in data:
+            self.has_prev = self.skip > 0
+
+    @classmethod
+    def create(cls, items: List[T], total: int, skip: int = 0, limit: int = 20):
+        """Helper method to create paginated response with automatic defaults."""
+        return cls(
+            items=items,
+            total=total,
+            skip=skip,
+            limit=limit
+        )
 
 
 class BaseFilter(BaseModel):

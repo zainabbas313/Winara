@@ -59,16 +59,38 @@ async def create_vertical(
         raise
 
 
+# Fixed endpoint with proper default value handling
 @router.get("", response_model=VerticalPaginatedResponse[VerticalResponse])
 async def get_verticals(
     current_user: CurrentUser,
     db: DatabaseSession,
-    parent_id: Optional[str] = Query(None, description="Filter by parent vertical ID (null for root level)"),
-    is_active: Optional[bool] = Query(None, description="Filter by active status"),
-    q: Optional[str] = Query(None, description="Search in name, description, slug"),
-    skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
-    sort: str = Query("sort_order", description="Sort field (prefix with - for desc)"),
+    parent_id: Optional[str] = Query(
+        default=None, 
+        description="Filter by parent vertical ID (null for root level)"
+    ),
+    is_active: Optional[bool] = Query(
+        default=None, 
+        description="Filter by active status"
+    ),
+    q: Optional[str] = Query(
+        default=None, 
+        description="Search in name, description, slug"
+    ),
+    skip: int = Query(
+        default=0, 
+        ge=0, 
+        description="Number of records to skip"
+    ),
+    limit: int = Query(
+        default=20, 
+        ge=1, 
+        le=100, 
+        description="Number of records to return"
+    ),
+    sort: str = Query(
+        default="sort_order", 
+        description="Sort field (prefix with - for desc)"
+    ),
     vertical_service: VerticalService = Depends(get_vertical_service)
 ):
     """
@@ -76,40 +98,68 @@ async def get_verticals(
     
     **Query Parameters:**
     - **parent_id**: Filter by parent ID (use "null" for root level verticals)
-    - **is_active**: Filter by active status
+    - **is_active**: Filter by active status (defaults to all if not specified)
     - **q**: Search term for name, description, or slug
-    - **skip**: Number of records to skip for pagination
-    - **limit**: Maximum number of records to return
-    - **sort**: Sort field, prefix with '-' for descending order
+    - **skip**: Number of records to skip for pagination (default: 0)
+    - **limit**: Maximum number of records to return (default: 20, max: 100)
+    - **sort**: Sort field, prefix with '-' for descending order (default: sort_order)
     """
     try:
         # Handle special case for root level verticals
         parsed_parent_id = None
-        if parent_id and parent_id.lower() != "null":
+        if parent_id is not None and parent_id.lower() != "null":
             try:
                 parsed_parent_id = UUID(parent_id)
             except ValueError:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid parent_id format"
+                    detail="Invalid parent_id format. Must be a valid UUID or 'null'."
                 )
         
+        # Ensure defaults are applied
+        skip = max(0, skip)  # Ensure skip is never negative
+        limit = max(1, min(100, limit))  # Ensure limit is between 1 and 100
+        sort = sort.strip() if sort else "sort_order"  # Handle empty sort
+        
+        # Create filters with proper defaults
         filters = VerticalListFilter(
             parent_id=parsed_parent_id,
-            is_active=is_active,
-            q=q
+            is_active=is_active,  # None means no filter
+            q=q.strip() if q else None  # Handle empty search string
         )
         
-        return vertical_service.get_verticals(db, filters, skip, limit, sort)
+        # Get data from service
+        result = vertical_service.get_verticals(db, filters, skip, limit, sort)
+        
+        # Ensure result has proper structure
+        if not isinstance(result, VerticalPaginatedResponse):
+            # If service returns raw data, wrap it properly
+            items = getattr(result, 'items', [])
+            total = getattr(result, 'total', len(items))
+            
+            return VerticalPaginatedResponse.create(
+                items=items,
+                total=total,
+                skip=skip,
+                limit=limit
+            )
+        
+        return result
+        
     except HTTPException:
         raise
+    except ValueError as e:
+        logger.error(f"Validation error in get_verticals endpoint: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid input: {str(e)}"
+        )
     except Exception as e:
         logger.error(f"Error in get_verticals endpoint: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
         )
-
 
 @router.get("/{vertical_id}", response_model=VerticalResponse)
 async def get_vertical(

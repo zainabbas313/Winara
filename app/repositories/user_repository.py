@@ -1,6 +1,7 @@
 from typing import Optional, List
 from uuid import UUID
 from datetime import datetime, timedelta
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func
 from .base_repository import BaseRepository
@@ -254,7 +255,7 @@ class UserRepository(BaseRepository[User], IUserRepository):
             return []
 
     def assign_verticals(self, db: Session, user_id: UUID, vertical_ids: List[UUID], 
-                        assigned_by_id: UUID, notes: Optional[str] = None) -> List[UserVertical]:
+                    assigned_by_id: UUID, notes: Optional[str] = None) -> List[UserVertical]:
         """Assign verticals to user."""
         try:
             assignments = []
@@ -292,8 +293,11 @@ class UserRepository(BaseRepository[User], IUserRepository):
         except Exception as e:
             logger.error(f"Error assigning verticals to user {user_id}: {e}")
             db.rollback()
-            return []
-
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to assign verticals: {str(e)}"
+            )
+    
     def remove_vertical(self, db: Session, user_id: UUID, vertical_id: UUID) -> bool:
         """Remove vertical assignment from user."""
         try:
