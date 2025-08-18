@@ -46,7 +46,6 @@ class BidBase(BaseModel):
 
 class BidCreate(BidBase):
     vertical_id: UUID
-    member_id: UUID
     team_id: UUID
 
 

@@ -36,8 +36,8 @@ class UserProfile(BaseModel):
     id: UUID
     email: EmailStr
     username: str
-    first_name: str
-    last_name: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     phone: Optional[str] = None
     bio: Optional[str] = None
     linkedin_profile_url: Optional[str] = None

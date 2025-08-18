@@ -33,15 +33,14 @@ async def create_bid(
     bid_service: BidService = Depends(get_bid_service)
 ):
     """
-    Create a new bid.
+    Create a new bid for the current user.
     
     - **job_title**: Title of the job/project
     - **job_url**: URL to the job posting (optional)
     - **job_description**: Description of the job (optional)
     - **client_name**: Name of the client (optional)
     - **vertical_id**: ID of the assigned vertical
-    - **member_id**: ID of the bidding member
-    - **team_id**: ID of the member's team
+    - **team_id**: ID of the team to create bid for (user must be member)
     - **budget_type**: Type of budget (fixed or hourly)
     - **budget_min/max**: Budget range for fixed projects
     - **hourly_rate**: Rate for hourly projects
@@ -51,6 +50,9 @@ async def create_bid(
     - **proposal_text**: Proposal content (optional)
     - **cover_letter**: Cover letter content (optional)
     - **competition_level**: Competition level (1-10)
+    
+    Note: member_id is automatically set from the current user.
+    User must be a member of the specified team.
     """
     return bid_service.create_bid(
         db, bid_data, current_user.id, 

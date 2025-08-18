@@ -7,6 +7,7 @@ from repositories.bid_repository import BidRepository
 from repositories.user_repository import UserRepository
 from repositories.notification_repository import NotificationRepository
 from repositories.audit_repository import AuditRepository
+from repositories.team_repository import TeamRepository
 from schemas.bid import (
     BidCreate, BidUpdate, BidResponse, BidListFilter, 
     BidStatusUpdate, BidStats
@@ -26,13 +27,14 @@ logger = logging.getLogger(__name__)
 class BidService(IBidService):
     def __init__(self):
         self.bid_repo = BidRepository()
+        self.team_repo = TeamRepository()
         self.user_repo = UserRepository()
         self.notification_repo = NotificationRepository()
         self.audit_repo = AuditRepository()
 
     def create_bid(self, db: Session, bid_data: BidCreate, 
-                  requesting_user_id: UUID, requesting_user_role: UserRole,
-                  requesting_user_team_id: Optional[UUID] = None) -> BidResponse:
+                requesting_user_id: UUID, requesting_user_role: UserRole,
+                requesting_user_team_id: Optional[UUID] = None) -> BidResponse:
         """Create a new bid with validation and permission checks."""
         try:
             # Validate user permissions
@@ -41,11 +43,11 @@ class BidService(IBidService):
             ):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Insufficient permissions to create bid"
+                    detail="Insufficient permissions to create bid for this team"
                 )
             
             # Validate vertical assignment
-            if not self.validate_vertical_assignment(db, bid_data.member_id, bid_data.vertical_id):
+            if not self.validate_vertical_assignment(db, requesting_user_id, bid_data.vertical_id):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="User is not assigned to this vertical"
@@ -72,8 +74,14 @@ class BidService(IBidService):
                     detail=f"Budget validation failed: {', '.join(errors)}"
                 )
             
+            # Create bid data with user information
+            bid_create_data = bid_data.dict()
+            bid_create_data.update({
+                'member_id': requesting_user_id
+            })
+            
             # Create bid
-            bid = self.bid_repo.create(db, bid_data)
+            bid = self.bid_repo.create(db, BidCreate(**bid_create_data))
             
             # Log bid creation
             self.audit_repo.create_audit_log(
@@ -590,25 +598,25 @@ class BidService(IBidService):
         return filters
 
     def _validate_bid_creation_permission(self, db: Session, bid_data: BidCreate,
-                                         requesting_user_id: UUID, requesting_user_role: UserRole,
-                                         requesting_user_team_id: Optional[UUID]) -> bool:
+                                        requesting_user_id: UUID, requesting_user_role: UserRole,
+                                        requesting_user_team_id: Optional[UUID]) -> bool:
         """Validate bid creation permissions."""
-        # Admin can create bids for anyone
+        # Admin can create bids for any team
         if requesting_user_role == UserRole.ADMIN:
             return True
         
-        # Sub-admin can create bids for team members
-        if requesting_user_role == UserRole.SUB_ADMIN:
-            # Check if the member belongs to the sub-admin's team
-            member = self.user_repo.get_by_id(db, bid_data.member_id)
-            return member and member.team_id == requesting_user_team_id
+        # Validate that user belongs to the specified team
+        user = self.user_repo.get_by_id(db, requesting_user_id)
+        if not user or not user.is_active:
+            return False
         
-        # Member can create bids for themselves
-        if requesting_user_role == UserRole.MEMBER:
-            return bid_data.member_id == requesting_user_id
+        # Check if user is a member of the specified team
+        is_team_member = self.team_repo.get_by_id(db, bid_data.team_id)
+        if not is_team_member:
+            return False
         
-        return False
-
+        return True
+    
     def _validate_bid_delete_permission(self, db: Session, bid, requesting_user_id: UUID,
                                        requesting_user_role: UserRole) -> bool:
         """Validate bid deletion permissions (stricter than edit)."""
