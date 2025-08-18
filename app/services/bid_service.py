@@ -86,7 +86,7 @@ class BidService(IBidService):
             # Log bid creation
             self.audit_repo.create_audit_log(
                 db, AuditAction.CREATE, "bid", bid.id, requesting_user_id, None,
-                None, None, f"Bid created: {bid.job_title}",
+                None, None, f"Bid created: {bid.job_title}",old_values={},
                 new_values={
                     "job_title": bid.job_title,
                     "vertical_id": str(bid.vertical_id),
@@ -345,7 +345,7 @@ class BidService(IBidService):
             self.audit_repo.create_audit_log(
                 db, AuditAction.DELETE, "bid", bid_id, requesting_user_id, None,
                 None, None, f"Bid deleted: {bid_info['job_title']}",
-                old_values=bid_info
+                old_values=bid_info, new_values={}
             )
             
             return SuccessResponse(message="Bid deleted successfully")
@@ -482,7 +482,8 @@ class BidService(IBidService):
                         # Log bulk update
                         self.audit_repo.create_audit_log(
                             db, AuditAction.UPDATE, "bid", bid_id, requesting_user_id, None,
-                            None, None, f"Bulk status update to {status.value}"
+                            None, None, f"Bulk status update to {status.value}", old_values={},
+                            new_values={}
                         )
             
             return updated_bids

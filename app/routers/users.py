@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import Optional, List
 from uuid import UUID
 from dependencies.dependencies import (
-    get_db, get_current_user, get_current_admin_user, get_current_sub_admin_user,
+    CurrentAdminOrSubAdminUser, get_db, get_current_user, get_current_admin_user, get_current_sub_admin_user,
     DatabaseSession, CurrentUser, CurrentAdminUser, CurrentSubAdminUser,
     get_pagination_params
 )
@@ -49,7 +49,7 @@ async def create_user(
 
 @router.get("/users", response_model=PaginatedResponse[UserResponse])
 async def get_users(
-    current_user: CurrentUser,
+    current_user: CurrentAdminOrSubAdminUser,
     db: DatabaseSession,
     role: Optional[UserRole] = Query(None, description="Filter by user role"),
     status: Optional[UserStatus] = Query(None, description="Filter by user status"),
@@ -68,12 +68,6 @@ async def get_users(
     - Sub-Admin: Can see users in their team
     - Member: Cannot access this endpoint
     """
-    if current_user.role == UserRole.MEMBER:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions"
-        )
-    
     filters = UserListFilter(
         role=role,
         status=status,

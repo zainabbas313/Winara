@@ -209,7 +209,7 @@ class AuthService(IAuthService):
                 # Log logout
                 self.audit_repo.create_audit_log(
                     db, AuditAction.LOGOUT, "user", current_user_id, current_user_id,
-                    logout_data.session_id, None, None, "User logged out"
+                    logout_data.session_id, None, None, "User logged out", old_values={}, new_values={}
                 )
             
             return SuccessResponse(message="Logged out successfully")
@@ -229,7 +229,7 @@ class AuthService(IAuthService):
             # Log logout from all sessions
             self.audit_repo.create_audit_log(
                 db, AuditAction.LOGOUT, "user", user_id, user_id, None,
-                None, None, "User logged out from all sessions"
+                None, None, "User logged out from all sessions", old_values={}, new_values={}
             )
             
             return SuccessResponse(message="Logged out from all sessions")
@@ -401,7 +401,7 @@ class AuthService(IAuthService):
             if success:
                 self.audit_repo.create_audit_log(
                     db, AuditAction.DELETE, "session", session_id, current_user_id,
-                    session_id, None, None, "Session deleted by user"
+                    session_id, None, None, "Session deleted by user", old_values={},new_values={}
                 )
             
             return SuccessResponse(message="Session deleted successfully")

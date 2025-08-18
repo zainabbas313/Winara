@@ -271,7 +271,7 @@ class UserService(IUserService):
             self.audit_repo.create_audit_log(
                 db, AuditAction.DELETE, "user", user_id, requesting_user_id, None,
                 None, None, f"User deleted: {user_info['username']}",
-                old_values=user_info
+                old_values=user_info, new_values={}
             )
             
             return SuccessResponse(message="User deleted successfully")
