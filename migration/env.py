@@ -20,7 +20,7 @@ if config.config_file_name is not None:
 
 # Import Base and models so Alembic detects all tables
 try:
-    from app.database.database import Base
+    from app.models.models import Base
     import app.models.models  # This ensures all classes are registered with Base.metadata
 
     target_metadata = Base.metadata

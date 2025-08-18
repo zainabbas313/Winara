@@ -96,3 +96,76 @@ class TeamMemberResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class AddUserToTeamRequest(BaseModel):
+    user_id: UUID = Field(..., description="ID of the user to add to the team")
+    role: Optional[str] = Field(None, description="Role to assign (optional)")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "user_id": "123e4567-e89b-12d3-a456-426614174000",
+                "role": "member"
+            }
+        }
+
+
+class RemoveUserFromTeamRequest(BaseModel):
+    reason: Optional[str] = Field(None, max_length=500, description="Reason for removal")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "reason": "User transferred to another team"
+            }
+        }
+
+
+class TeamMembershipResponse(BaseModel):
+    user_id: UUID
+    team_id: UUID
+    role: str
+    added_by_id: UUID
+    added_at: datetime
+    status: str
+    
+    class Config:
+        from_attributes = True
+
+
+class BulkAddUsersRequest(BaseModel):
+    user_ids: List[UUID] = Field(..., min_items=1, max_items=50)
+    default_role: str = Field(default="member", description="Default role for all users")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "user_ids": [
+                    "123e4567-e89b-12d3-a456-426614174000",
+                    "123e4567-e89b-12d3-a456-426614174001"
+                ],
+                "default_role": "member"
+            }
+        }
+
+
+class BulkAddUsersResponse(BaseModel):
+    success_count: int
+    failed_count: int
+    total_count: int
+    added_users: List[TeamMemberResponse]
+    failed_users: List[dict]
+    message: str
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success_count": 2,
+                "failed_count": 0,
+                "total_count": 2,
+                "added_users": [],
+                "failed_users": [],
+                "message": "Successfully added 2 users to team"
+            }
+        }

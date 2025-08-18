@@ -6,7 +6,6 @@ from contextlib import asynccontextmanager
 import uvicorn
 import logging
 from core.config.config import settings
-from database.database import engine, Base
 from routers import auth, users, teams, verticals, bids, receivables, analytics
 
 
@@ -18,32 +17,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan events."""
-    # Startup
-    logger.info("Starting Upwork Bidders Management API")
-    
-    # Create database tables
-    try:
-        Base.metadata.create_all(bind=engine)
-        logger.info("Database tables created successfully")
-    except Exception as e:
-        logger.error(f"Failed to create database tables: {e}")
-        raise
-    
-    yield
-    
-    # Shutdown
-    logger.info("Shutting down Upwork Bidders Management API")
-
-
 # Create FastAPI application
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
-    description="Centralized Upwork bidding management system with comprehensive analytics and role-based access control",
-    lifespan=lifespan
+    description="Centralized Upwork bidding management system with comprehensive analytics and role-based access control"
 )
 
 # Add security middleware

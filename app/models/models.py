@@ -6,7 +6,8 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
 import enum
-from database.database import Base
+from sqlalchemy.ext.declarative import declarative_base
+Base = declarative_base()
 
 
 # ==========================
@@ -95,8 +96,8 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     username = Column(String(50), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
-    first_name = Column(String(100), nullable=False)
-    last_name = Column(String(100), nullable=False)
+    first_name = Column(String(100), nullable=True)
+    last_name = Column(String(100), nullable=True)
     phone = Column(String(20))
     bio = Column(Text)
     linkedin_profile_url = Column(String(500))
@@ -174,8 +175,6 @@ class TeamGoal(Base):
     # Relationships
     team = relationship("Team", back_populates="goals")
     created_by = relationship("User")
-
-
 class Vertical(Base):
     __tablename__ = "verticals"
 
@@ -199,8 +198,16 @@ class Vertical(Base):
     created_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
 
     # Relationships
-    parent = relationship("Vertical", remote_side=[id])
-    children = relationship("Vertical", cascade="all, delete-orphan")
+    parent = relationship(
+        "Vertical",
+        remote_side=[id],
+        back_populates="children"
+    )
+    children = relationship(
+        "Vertical",
+        back_populates="parent",
+        cascade="all, delete-orphan"
+    )
     created_by = relationship("User")
     user_assignments = relationship("UserVertical", back_populates="vertical")
     bids = relationship("Bid", back_populates="vertical")

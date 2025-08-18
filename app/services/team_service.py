@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Any, Dict, Optional, List
 from uuid import UUID
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
@@ -6,11 +6,11 @@ from interface.Iservices.team_service import ITeamService
 from repositories.team_repository import TeamRepository
 from repositories.audit_repository import AuditRepository
 from schemas.team import (
-    TeamCreate, TeamUpdate, TeamResponse, TeamListFilter,
+    AddUserToTeamRequest, BulkAddUsersRequest, BulkAddUsersResponse, TeamCreate, TeamMemberResponse, TeamUpdate, TeamResponse, TeamListFilter,
     TeamGoalCreate, TeamGoalUpdate, TeamGoalResponse
 )
 from schemas.common import SuccessResponse, PaginatedResponse
-from models.models import UserRole, AuditAction
+from models.models import UserRole, AuditAction, UserStatus
 import logging
 
 logger = logging.getLogger(__name__)
@@ -260,7 +260,7 @@ class TeamService(ITeamService):
             self.audit_repo.create_audit_log(
                 db, AuditAction.DELETE, "team", team_id, requesting_user_id, None,
                 None, None, f"Team deleted: {team_info['name']}",
-                old_values=team_info
+                old_values=team_info, new_values={}
             )
             
             return SuccessResponse(message="Team deleted successfully")
@@ -272,6 +272,250 @@ class TeamService(ITeamService):
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Team deletion failed"
+            )
+
+    def add_user_to_team(self, db: Session, team_id: UUID, user_data: AddUserToTeamRequest, 
+                        requesting_user_id: UUID) -> TeamMemberResponse:
+        """Add user to team."""
+        try:
+            # Validate team exists
+            team = self.team_repo.get_by_id(db, team_id)
+            if not team:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Team not found"
+                )
+            
+            # Validate user exists
+            from repositories.user_repository import UserRepository
+            user_repo = UserRepository()
+            user = user_repo.get_by_id(db, user_data.user_id)
+            
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User not found"
+                )
+            
+            # Check if user is already in a team
+            if user.team_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"User is already a member of team: {user.team.name if user.team else 'Unknown'}"
+                )
+            
+            # Check if user is active
+            if not user.is_active or user.status != UserStatus.ACTIVE:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="User must be active to be added to a team"
+                )
+            
+            # Validate role if provided
+            if user_data.role:
+                # Only allow adding members, sub-admins need special handling
+                if user_data.role not in ['member']:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Can only add users with 'member' role through this endpoint"
+                    )
+            
+            # Update user's team assignment
+            from schemas.user import UserUpdate
+            user_update = UserUpdate(team_id=team_id)
+            updated_user = user_repo.update(db, user_data.user_id, user_update)
+            
+            if not updated_user:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to add user to team"
+                )
+            
+            # Log the action
+            self.audit_repo.create_audit_log(
+                db, AuditAction.ASSIGN_VERTICAL, "user_team", user_data.user_id, 
+                requesting_user_id, None, None, None, 
+                f"User {user.username} added to team {team.name}", old_values={},
+                new_values={
+                    "user_id": str(user_data.user_id),
+                    "team_id": str(team_id),
+                    "team_name": team.name,
+                    "added_by": str(requesting_user_id)
+                }
+            )
+            
+            # Return team member response
+            return TeamMemberResponse(
+                id=updated_user.id,
+                username=updated_user.username,
+                first_name=updated_user.first_name,
+                last_name=updated_user.last_name,
+                email=updated_user.email,
+                role=updated_user.role.value,
+                status=updated_user.status.value,
+                is_active=updated_user.is_active,
+                last_activity=updated_user.last_activity
+            )
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error adding user to team: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to add user to team"
+            )
+
+
+    def remove_user_from_team(self, db: Session, team_id: UUID, user_id: UUID, 
+                            requesting_user_id: UUID) -> SuccessResponse:
+        """Remove user from team."""
+        try:
+            # Validate team exists
+            team = self.team_repo.get_by_id(db, team_id)
+            if not team:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Team not found"
+                )
+            
+            # Validate user exists and is in the team
+            from repositories.user_repository import UserRepository
+            user_repo = UserRepository()
+            user = user_repo.get_by_id(db, user_id)
+            
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="User not found"
+                )
+            
+            if user.team_id != team_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="User is not a member of this team"
+                )
+            
+            # Cannot remove sub-admin through this endpoint
+            if user.role == UserRole.SUB_ADMIN:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot remove sub-admin through this endpoint. Please assign a new sub-admin first."
+                )
+            
+            # Store user info for audit
+            user_info = {
+                "username": user.username,
+                "email": user.email,
+                "role": user.role.value,
+                "team_name": team.name
+            }
+            
+            # Remove user from team
+            from schemas.user import UserUpdate
+            user_update = UserUpdate(team_id=None)
+            updated_user = user_repo.update(db, user_id, user_update)
+            
+            if not updated_user:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to remove user from team"
+                )
+            
+            # Log the action
+            self.audit_repo.create_audit_log(
+                db, AuditAction.REMOVE_VERTICAL, "user_team", user_id, 
+                requesting_user_id, None, None, None,
+                f"User {user.username} removed from team {team.name}",
+                old_values={
+                    "user_id": str(user_id),
+                    "team_id": str(team_id),
+                    "team_name": team.name,
+                    "removed_by": str(requesting_user_id)
+                },
+                new_values={}
+            )
+            
+            return SuccessResponse(message=f"User {user.username} removed from team successfully")
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error removing user from team: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to remove user from team"
+            )
+
+
+    def bulk_add_users_to_team(self, db: Session, team_id: UUID, 
+                            users_data: BulkAddUsersRequest, 
+                            requesting_user_id: UUID) -> BulkAddUsersResponse:
+        """Bulk add users to team."""
+        try:
+            # Validate team exists
+            team = self.team_repo.get_by_id(db, team_id)
+            if not team:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Team not found"
+                )
+            
+            added_users = []
+            failed_users = []
+            
+            from repositories.user_repository import UserRepository
+            user_repo = UserRepository()
+            
+            for user_id in users_data.user_ids:
+                try:
+                    # Create individual request
+                    user_request = AddUserToTeamRequest(
+                        user_id=user_id,
+                        role=users_data.default_role
+                    )
+                    
+                    # Add user to team
+                    user_member = self.add_user_to_team(
+                        db, team_id, user_request, requesting_user_id
+                    )
+                    added_users.append(user_member)
+                    
+                except HTTPException as e:
+                    failed_users.append({
+                        "user_id": str(user_id),
+                        "error": e.detail
+                    })
+                except Exception as e:
+                    failed_users.append({
+                        "user_id": str(user_id),
+                        "error": str(e)
+                    })
+            
+            success_count = len(added_users)
+            failed_count = len(failed_users)
+            total_count = len(users_data.user_ids)
+            
+            message = f"Successfully added {success_count} users to team"
+            if failed_count > 0:
+                message += f", {failed_count} failed"
+            
+            return BulkAddUsersResponse(
+                success_count=success_count,
+                failed_count=failed_count,
+                total_count=total_count,
+                added_users=added_users,
+                failed_users=failed_users,
+                message=message
+            )
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error in bulk add users to team: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Bulk add users operation failed"
             )
 
     def update_team_statistics(self, db: Session, team_id: UUID) -> None:
@@ -316,7 +560,7 @@ class TeamService(ITeamService):
             # Log goal creation
             self.audit_repo.create_audit_log(
                 db, AuditAction.CREATE, "team_goal", goal.id, created_by_id, None,
-                None, None, f"Team goal created: {goal.goal_name}",
+                None, None, f"Team goal created: {goal.goal_name}",old_values={},
                 new_values={
                     "team_id": str(team_id),
                     "goal_name": goal.goal_name,
@@ -416,7 +660,7 @@ class TeamService(ITeamService):
             self.audit_repo.create_audit_log(
                 db, AuditAction.DELETE, "team_goal", goal_id, None, None,
                 None, None, f"Team goal deleted: {goal_info['goal_name']}",
-                old_values=goal_info
+                old_values=goal_info,new_values={}
             )
             
             return SuccessResponse(message="Team goal deleted successfully")
@@ -437,6 +681,148 @@ class TeamService(ITeamService):
         except Exception as e:
             logger.error(f"Error updating goal progress for team {team_id}: {e}")
 
+    def validate_user_team_assignment(self, db: Session, user_id: UUID, team_id: UUID) -> Dict[str, Any]:
+        """Validate if a user can be assigned to a team."""
+        try:
+            validation_result = {
+                "valid": True,
+                "issues": [],
+                "warnings": []
+            }
+            
+            # Check if user exists
+            from repositories.user_repository import UserRepository
+            user_repo = UserRepository()
+            user = user_repo.get_by_id(db, user_id)
+            
+            if not user:
+                validation_result["valid"] = False
+                validation_result["issues"].append("User not found")
+                return validation_result
+            
+            # Check if team exists
+            team = self.team_repo.get_by_id(db, team_id)
+            if not team:
+                validation_result["valid"] = False
+                validation_result["issues"].append("Team not found")
+                return validation_result
+            
+            # Check if user is active
+            if not user.is_active or user.status != UserStatus.ACTIVE:
+                validation_result["valid"] = False
+                validation_result["issues"].append("User must be active to be assigned to a team")
+            
+            # Check if user is already in a team
+            if user.team_id:
+                if user.team_id == team_id:
+                    validation_result["warnings"].append("User is already a member of this team")
+                else:
+                    validation_result["valid"] = False
+                    validation_result["issues"].append(f"User is already a member of another team: {user.team.name if user.team else 'Unknown'}")
+            
+            # Check team capacity (if there's a limit)
+            # This is optional based on business rules
+            current_members = user_repo.get_team_members_count(db, team_id)
+            if hasattr(team, 'max_members') and team.max_members and current_members >= team.max_members:
+                validation_result["valid"] = False
+                validation_result["issues"].append(f"Team has reached maximum capacity of {team.max_members} members")
+            
+            # Additional business rule checks can be added here
+            
+            return validation_result
+            
+        except Exception as e:
+            logger.error(f"Error validating user team assignment: {e}")
+            return {
+                "valid": False,
+                "issues": ["Validation failed due to system error"],
+                "warnings": []
+            }
+
+    def get_team_membership_history(self, db: Session, team_id: UUID, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get history of team membership changes."""
+        try:
+            # Validate team exists
+            team = self.team_repo.get_by_id(db, team_id)
+            if not team:
+                return []
+            
+            # Get audit logs related to team membership
+            membership_history = []
+            
+            # Get user assignment/removal logs
+            assignment_logs = self.audit_repo.get_audit_logs(
+                db, 
+                entity_type="user_team",
+                action_types=[AuditAction.ASSIGN_VERTICAL, AuditAction.REMOVE_VERTICAL],
+                limit=limit
+            )
+            
+            for log in assignment_logs:
+                # Filter logs related to this team
+                if log.new_values and log.new_values.get("team_id") == str(team_id):
+                    membership_history.append({
+                        "id": str(log.id),
+                        "action": "user_added",
+                        "user_id": log.new_values.get("user_id"),
+                        "user_name": log.new_values.get("username", "Unknown"),
+                        "performed_by": str(log.performed_by_id) if log.performed_by_id else None,
+                        "timestamp": log.created_at.isoformat() if log.created_at else None,
+                        "description": log.description,
+                        "details": log.new_values
+                    })
+                elif log.old_values and log.old_values.get("team_id") == str(team_id):
+                    membership_history.append({
+                        "id": str(log.id),
+                        "action": "user_removed", 
+                        "user_id": log.old_values.get("user_id"),
+                        "user_name": log.old_values.get("username", "Unknown"),
+                        "performed_by": str(log.performed_by_id) if log.performed_by_id else None,
+                        "timestamp": log.created_at.isoformat() if log.created_at else None,
+                        "description": log.description,
+                        "details": log.old_values
+                    })
+            
+            # Get team updates that might affect membership (like sub-admin changes)
+            team_logs = self.audit_repo.get_audit_logs(
+                db,
+                entity_type="team",
+                entity_id=team_id,
+                action_types=[AuditAction.UPDATE],
+                limit=limit
+            )
+            
+            for log in team_logs:
+                # Check if sub-admin was changed
+                if (log.old_values and log.new_values and 
+                    log.old_values.get("sub_admin_id") != log.new_values.get("sub_admin_id")):
+                    
+                    membership_history.append({
+                        "id": str(log.id),
+                        "action": "sub_admin_changed",
+                        "old_sub_admin_id": log.old_values.get("sub_admin_id"),
+                        "new_sub_admin_id": log.new_values.get("sub_admin_id"),
+                        "performed_by": str(log.performed_by_id) if log.performed_by_id else None,
+                        "timestamp": log.created_at.isoformat() if log.created_at else None,
+                        "description": log.description,
+                        "details": {
+                            "old_values": log.old_values,
+                            "new_values": log.new_values
+                        }
+                    })
+            
+            # Sort by timestamp (most recent first)
+            membership_history.sort(
+                key=lambda x: x.get("timestamp", ""), 
+                reverse=True
+            )
+            
+            return membership_history[:limit]
+            
+        except Exception as e:
+            logger.error(f"Error getting team membership history for {team_id}: {e}")
+            return []
+        
     # Private helper methods
     def _validate_team_access(self, requesting_user_role: str, 
                              requesting_user_team_id: Optional[UUID], 

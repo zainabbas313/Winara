@@ -8,8 +8,8 @@ from models.models import UserRole, UserStatus
 class UserBase(BaseModel):
     email: EmailStr
     username: str = Field(min_length=3, max_length=50)
-    first_name: str = Field(min_length=1, max_length=100)
-    last_name: str = Field(min_length=1, max_length=100)
+    first_name: Optional[str] = Field(None,min_length=1, max_length=100)
+    last_name: Optional[str] = Field(None,min_length=1, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
     bio: Optional[str] = None
     linkedin_profile_url: Optional[str] = None
@@ -21,11 +21,6 @@ class UserCreate(UserBase):
     role: UserRole
     status: UserStatus = UserStatus.ACTIVE
     team_id: Optional[UUID] = None
-
-    @validator('username')
-    def username_alphanumeric(cls, v):
-        assert v.replace('_', '').replace('-', '').isalnum(), 'Username must be alphanumeric (with _ and - allowed)'
-        return v
 
 
 class UserUpdate(BaseModel):

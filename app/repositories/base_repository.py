@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc, asc, func, text
 from sqlalchemy.exc import SQLAlchemyError
 from models.models import User
-from database.database import Base
+from models.models import Base
 from utils.helpers import parse_sort_parameter, parse_pagination_cursor, build_pagination_cursor
 from schemas.common import PaginatedResponse
 import json
