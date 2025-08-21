@@ -73,7 +73,7 @@ class TeamGoalUpdate(TeamGoalBase):
 
 class TeamGoalResponse(TeamGoalBase):
     id: UUID
-    team_id: UUID
+    team_id: Optional[UUID] = None
     is_achieved: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -124,7 +124,7 @@ class RemoveUserFromTeamRequest(BaseModel):
 
 class TeamMembershipResponse(BaseModel):
     user_id: UUID
-    team_id: UUID
+    team_id: Optional[UUID] = None
     role: str
     added_by_id: UUID
     added_at: datetime

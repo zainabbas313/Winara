@@ -368,6 +368,8 @@ class AuditRepository(BaseRepository[AuditLog], IAuditRepository):
                 db, AuditAction.CREATE, f"data_access_{entity_type}",
                 entity_id, user_id, None, ip_address, None,
                 f"Accessed {entity_type} data: {action}",
+                old_values={},
+                new_values={},
                 risk_level=risk_level
             )
         except Exception as e:

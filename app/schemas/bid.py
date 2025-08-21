@@ -17,11 +17,11 @@ class BidBase(BaseModel):
     hourly_rate: Optional[Decimal] = Field(None, gt=0)
     estimated_hours: int = Field(default=0, ge=0)
     connects_used: int = Field(default=1, ge=1, le=50)
-    boost_connects_used: int = Field(default=0, ge=0, le=50)
+    boost_connects_used: Optional[int] = Field(default=0, ge=0, le=50)
     proposal_text: Optional[str] = None
     cover_letter: Optional[str] = None
-    is_featured: bool = False
-    competition_level: int = Field(default=1, ge=1, le=10)
+    is_featured: Optional[bool] = False
+    competition_level: Optional[int] = Field(default=1, ge=1, le=10)
     notes: Optional[str] = None
 
     @validator('budget_max')
@@ -46,7 +46,7 @@ class BidBase(BaseModel):
 
 class BidCreate(BidBase):
     vertical_id: UUID
-    team_id: UUID
+    team_id: Optional[UUID] = None
 
 
 class BidUpdate(BidBase):
@@ -61,8 +61,8 @@ class BidUpdate(BidBase):
 class BidResponse(BidBase):
     id: UUID
     vertical_id: UUID
-    member_id: UUID
-    team_id: UUID
+    member_id: Optional[UUID] = None
+    team_id: Optional[UUID] = None
     connect_cost: Decimal
     total_cost: Decimal
     status: BidStatus

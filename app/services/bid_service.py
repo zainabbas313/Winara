@@ -38,6 +38,7 @@ class BidService(IBidService):
         """Create a new bid with validation and permission checks."""
         try:
             # Validate user permissions
+            print(f"{bid_data} - {requesting_user_id} - {requesting_user_role} - {requesting_user_team_id}")
             if not self._validate_bid_creation_permission(
                 db, bid_data, requesting_user_id, requesting_user_role, requesting_user_team_id
             ):
@@ -47,11 +48,12 @@ class BidService(IBidService):
                 )
             
             # Validate vertical assignment
-            if not self.validate_vertical_assignment(db, requesting_user_id, bid_data.vertical_id):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="User is not assigned to this vertical"
-                )
+            if requesting_user_role != UserRole.ADMIN:
+                if not self.validate_vertical_assignment(db, requesting_user_id, bid_data.vertical_id):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="User is not assigned to this vertical"
+                    )
             
             # Validate connects usage
             is_valid, error_msg = validate_connects_usage(
@@ -79,7 +81,8 @@ class BidService(IBidService):
             bid_create_data.update({
                 'member_id': requesting_user_id
             })
-            
+            print(bid_create_data)
+            print("\n"*3)
             # Create bid
             bid = self.bid_repo.create(db, BidCreate(**bid_create_data))
             

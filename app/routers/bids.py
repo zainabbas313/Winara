@@ -54,9 +54,16 @@ async def create_bid(
     Note: member_id is automatically set from the current user.
     User must be a member of the specified team.
     """
+    
+    if current_user.role != UserRole.ADMIN and not bid_data.team_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="team_id is required for non-admin users"
+        )
+
     return bid_service.create_bid(
-        db, bid_data, current_user.id, 
-        current_user.role, current_user.team_id
+        db, bid_data, current_user.id,
+        current_user.role
     )
 
 

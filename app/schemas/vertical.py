@@ -14,10 +14,10 @@ class VerticalBase(BaseModel):
     description: Optional[str] = Field(None, max_length=1000, description="Vertical description")
     parent_id: Optional[UUID] = Field(None, description="Parent vertical ID (None for root level)")
     level: Optional[int] = Field(None, ge=0, description="Hierarchy level (auto-calculated)")
-    sort_order: int = Field(default=0, ge=0, description="Display order")
+    sort_order: Optional[int] = Field(default=0, ge=0, description="Display order")
     is_active: bool = Field(default=True, description="Whether vertical is active")
     requires_approval: bool = Field(default=False, description="Whether assignments require approval")
-    competition_level: int = Field(default=1, ge=1, le=10, description="Competition level (1-10)")
+    competition_level: Optional[int] = Field(default=1, ge=1, le=10, description="Competition level (1-10)")
 
 
 class VerticalCreate(VerticalBase):
