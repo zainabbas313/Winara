@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, status, Query
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from uuid import UUID
@@ -10,6 +10,9 @@ from dependencies.dependencies import (
 from services.user_service import UserService
 from schemas.user import (
     UserCreate, UserUpdate, UserResponse, UserListFilter, UserSummary
+)
+from schemas.vertical import (
+    VerticalUserAssignmentResponse, VerticalAssignmentFilter
 )
 from schemas.vertical import UserVerticalAssign, UserVerticalResponse
 from schemas.common import SuccessResponse, PaginatedResponse
@@ -24,6 +27,39 @@ router = APIRouter()
 def get_user_service() -> UserService:
     return UserService()
 
+#User endpoint
+@router.get("/users/me", response_model=UserResponse)
+async def get_user_info(
+    current_user: CurrentUser,
+    db: DatabaseSession,
+    user_service: UserService = Depends(get_user_service)
+):
+    """
+    Get user by ID.
+    
+    Access control:
+    - Admin: Can see any user
+    - Sub-Admin: Can see users in their team
+    - Member: Can only see themselves
+    """
+    try:
+        user = user_service.get_user_itself(
+            db, current_user.id, current_user.id, 
+            current_user.role.value, current_user.team_id
+        )
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        return user
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid user ID format"
+        )
 
 # Admin-only endpoints
 @router.post("/users", response_model=UserResponse)
@@ -177,12 +213,24 @@ async def delete_user(
 
 
 # Vertical assignment endpoints
-@router.get("/users/{user_id}/verticals", response_model=List[UserVerticalResponse])
-async def get_user_verticals(
-    user_id: str,
+@router.get("/users/me/verticals", response_model=List[UserVerticalResponse])
+async def get_current_user_verticals(
     current_user: CurrentUser,
     db: DatabaseSession,
-    user_service: UserService = Depends(get_user_service)
+    user_service: UserService = Depends(get_user_service),
+):
+    """Get current user's assigned verticals."""
+    return user_service.get_user_verticals(
+        db, current_user.id, current_user.id, 
+        current_user.role.value, current_user.team_id
+    )
+
+@router.get("/users/{user_id}/verticals", response_model=List[UserVerticalResponse])
+async def get_user_verticals(
+    current_user: CurrentUser,
+    db: DatabaseSession,
+    user_id: UUID = Path(..., description="User ID to get verticals for"),
+    user_service: UserService = Depends(get_user_service),
 ):
     """
     Get user's assigned verticals.
@@ -193,19 +241,18 @@ async def get_user_verticals(
     - Member: Can only see their own verticals
     """
     try:
-        user_uuid = UUID(user_id)
         return user_service.get_user_verticals(
-            db, user_uuid, current_user.id, 
+            db, user_id, current_user.id, 
             current_user.role.value, current_user.team_id
         )
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid user ID format"
-        )
+        )                                   
+ 
 @router.post("/users/{user_id}/verticals", response_model=List[UserVerticalResponse])
 async def assign_verticals_to_user(
-    user_id: str,
     assignment_data: UserVerticalAssign,
     current_user: CurrentSubAdminUser,
     db: DatabaseSession,
@@ -219,8 +266,6 @@ async def assign_verticals_to_user(
     - **notes**: Optional notes about the assignment
     """
     try:
-        user_uuid = UUID(user_id)
-        
         # Validate that vertical_ids are not empty
         if not assignment_data.vertical_ids:
             raise HTTPException(
@@ -229,14 +274,14 @@ async def assign_verticals_to_user(
             )
         
         # Validate that vertical_ids are different from user_id
-        if user_uuid in assignment_data.vertical_ids:
+        if assignment_data.user_id in assignment_data.vertical_ids:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="User ID cannot be used as vertical ID"
             )
         
         return user_service.assign_verticals(
-            db, user_uuid, assignment_data, current_user.id,
+            db, assignment_data.user_id, assignment_data, current_user.id,
             current_user.role.value, current_user.team_id
         )
     except ValueError:
@@ -276,6 +321,116 @@ async def remove_vertical_from_user(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid ID format"
+        )
+
+
+# NEW ENDPOINTS FOR VERTICAL USER ASSIGNMENTS
+@router.get("/verticals/{vertical_id}/users", response_model=PaginatedResponse[VerticalUserAssignmentResponse])
+async def get_vertical_assigned_users(
+    current_user: CurrentUser,
+    db: DatabaseSession,
+    vertical_id: UUID = Path(..., description="Vertical ID to get assigned users for"),
+    is_active: Optional[bool] = Query(None, description="Filter by assignment status"),
+    role: Optional[UserRole] = Query(None, description="Filter by user role"),
+    team_id: Optional[str] = Query(None, description="Filter by team ID"),
+    q: Optional[str] = Query(None, description="Search in user details"),
+    skip: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
+    user_service: UserService = Depends(get_user_service)
+):
+    """
+    Get all users assigned to a specific vertical.
+    
+    Access control:
+    - Admin: Can see all vertical assignments
+    - Sub-Admin: Can see assignments for verticals where their team members are assigned
+    - Member: Can only see assignments for verticals they are assigned to
+    
+    Returns a paginated list of users with their assignment details.
+    """
+    try:
+        # Create filters
+        filters = VerticalAssignmentFilter(
+            is_active=is_active,
+            role=role,
+            team_id=UUID(team_id) if team_id else None,
+            q=q
+        )
+        
+        return user_service.get_vertical_assigned_users(
+            db=db,
+            vertical_id=vertical_id,
+            requesting_user_id=current_user.id,
+            requesting_user_role=current_user.role.value,
+            requesting_user_team_id=current_user.team_id,
+            filters=filters,
+            skip=skip,
+            limit=limit
+        )
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid parameter format: {str(e)}"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting users for vertical {vertical_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while retrieving vertical assignments"
+        )
+
+
+@router.get("/verticals/{vertical_id}/users/{user_id}", response_model=VerticalUserAssignmentResponse)
+async def get_vertical_user_assignment_details(
+    current_user: CurrentUser,
+    db: DatabaseSession,
+    vertical_id: UUID = Path(..., description="Vertical ID"),
+    user_id: UUID = Path(..., description="User ID"),
+    user_service: UserService = Depends(get_user_service)
+):
+    """
+    Get detailed assignment information for a specific user-vertical combination.
+    
+    Access control:
+    - Admin: Can see any assignment details
+    - Sub-Admin: Can see assignment details for their team members
+    - Member: Can only see their own assignment details
+    
+    Returns detailed information about the assignment including performance metrics.
+    """
+    try:
+        assignment = user_service.get_vertical_user_assignment_details(
+            db=db,
+            vertical_id=vertical_id,
+            user_id=user_id,
+            requesting_user_id=current_user.id,
+            requesting_user_role=current_user.role.value,
+            requesting_user_team_id=current_user.team_id
+        )
+        
+        if not assignment:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Assignment not found or access denied"
+            )
+        
+        return assignment
+        
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid ID format"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting assignment details for vertical {vertical_id} and user {user_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error while retrieving assignment details"
         )
 
 
