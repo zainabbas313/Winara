@@ -83,9 +83,9 @@ class ReceivableService(IReceivableService):
         
         return self._to_response(receivable)
     
-    def get_receivables(self, db: Session, filters: ReceivableListFilter,  user_id: UUID, user_role: str, skip: int = 0,
-                       limit: int = 20, sort_by: str = "-created_at",
-                        user_team_id: Optional[UUID] = None) -> PaginatedResponse[ReceivableResponse]:
+    def get_receivables(self, db: Session, filters: ReceivableListFilter, user_id: UUID, user_role: str, 
+                       skip: int = 0, limit: int = 20, sort_by: str = "-created_at",
+                       user_team_id: Optional[UUID] = None) -> PaginatedResponse[ReceivableResponse]:
         """Get receivables with filtering, pagination and access control."""
         # Apply access control to filters
         if user_role == UserRole.SUB_ADMIN.value:
@@ -93,14 +93,7 @@ class ReceivableService(IReceivableService):
         
         result = self.repository.get_all(db, filters, skip, limit, sort_by)
         
-        return PaginatedResponse(
-            items=[self._to_response(item) for item in result.items],
-            total=result.total,
-            skip=result.skip,
-            limit=result.limit,
-            has_next=result.has_next,
-            has_prev=result.has_prev
-        )
+        return result
     
     def update_receivable(self, db: Session, receivable_id: UUID, receivable_data: ReceivableUpdate,
                          user_id: UUID, user_role: str, user_team_id: Optional[UUID] = None) -> Optional[ReceivableResponse]:
@@ -238,19 +231,19 @@ class ReceivableService(IReceivableService):
             stats_data = self.repository.get_statistics(db, team_id)
             
             return ReceivableStats(
-                total_receivables=stats_data['total_receivables'],
-                total_value=stats_data['total_value'],
-                paid_value=stats_data['paid_value'],
-                pending_value=stats_data['pending_value'],
-                partial_value=stats_data['partial_value'],
-                overdue_value=stats_data['overdue_value'],
-                overdue_count=stats_data['overdue_count'],
-                avg_payment_days=stats_data['avg_payment_days'],
-                collection_rate=stats_data['collection_rate'],
-                by_status=stats_data['by_status'],
-                by_currency=stats_data['by_currency'],
-                current_month_value=stats_data['current_month_value'],
-                next_month_value=stats_data['next_month_value']
+                total_receivables=stats_data.get('total_receivables', 0),
+                total_value=stats_data.get('total_value', 0),
+                paid_value=stats_data.get('paid_value', 0),
+                pending_value=stats_data.get('pending_value', 0),
+                partial_value=stats_data.get('partial_value', 0),
+                overdue_value=stats_data.get('overdue_value', 0),
+                overdue_count=stats_data.get('overdue_count', 0),
+                avg_payment_days=stats_data.get('avg_payment_days'),
+                collection_rate=stats_data.get('collection_rate', 0),
+                by_status=stats_data.get('by_status', []),
+                by_currency=stats_data.get('by_currency', []),
+                current_month_value=stats_data.get('current_month_value', 0),
+                next_month_value=stats_data.get('next_month_value', 0)
             )
             
         except Exception as e:

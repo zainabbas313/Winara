@@ -25,7 +25,7 @@ def get_receivable_service() -> ReceivableService:
     return ReceivableService()
 
 
-@router.post("/receivables", response_model=ReceivableResponse)
+@router.post("/", response_model=ReceivableResponse, status_code=status.HTTP_201_CREATED)
 async def create_receivable(
     receivable_data: ReceivableCreate,
     current_user: CurrentSubAdminUser,
@@ -49,7 +49,7 @@ async def create_receivable(
     )
 
 
-@router.get("/receivables", response_model=PaginatedResponse[ReceivableResponse])
+@router.get("/", response_model=PaginatedResponse[ReceivableResponse])
 async def get_receivables(
     current_user: CurrentUser,
     db: DatabaseSession,
@@ -77,8 +77,19 @@ async def get_receivables(
             detail="Insufficient permissions"
         )
     
+    # Validate team_id if provided
+    team_uuid = None
+    if team_id:
+        try:
+            team_uuid = UUID(team_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid team ID format"
+            )
+    
     filters = ReceivableListFilter(
-        team_id=UUID(team_id) if team_id else None,
+        team_id=team_uuid,
         status=status,
         date_from=date_from,
         date_to=date_to,
@@ -86,12 +97,12 @@ async def get_receivables(
     )
     
     return receivable_service.get_receivables(
-        db, filters, skip, limit, sort,
-        current_user.id, current_user.role, current_user.team_id
+        db, filters, current_user.id, current_user.role, 
+        skip, limit, sort, current_user.team_id
     )
 
 
-@router.get("/receivables/{receivable_id}", response_model=ReceivableResponse)
+@router.get("/{receivable_id}", response_model=ReceivableResponse)
 async def get_receivable(
     receivable_id: str,
     current_user: CurrentUser,
@@ -133,7 +144,7 @@ async def get_receivable(
         )
 
 
-@router.put("/receivables/{receivable_id}", response_model=ReceivableResponse)
+@router.put("/{receivable_id}", response_model=ReceivableResponse)
 async def update_receivable(
     receivable_id: str,
     receivable_data: ReceivableUpdate,
@@ -165,7 +176,7 @@ async def update_receivable(
         )
 
 
-@router.patch("/receivables/{receivable_id}/status", response_model=ReceivableResponse)
+@router.patch("/{receivable_id}/status", response_model=ReceivableResponse)
 async def update_receivable_status(
     receivable_id: str,
     status_data: ReceivableStatusUpdate,
@@ -179,7 +190,7 @@ async def update_receivable_status(
     Available status transitions:
     - pending → partial/paid/overdue
     - partial → paid/overdue
-    - overdue → paid
+    - overdue → paid/partial
     """
     try:
         receivable_uuid = UUID(receivable_id)
@@ -202,7 +213,7 @@ async def update_receivable_status(
         )
 
 
-@router.delete("/receivables/{receivable_id}", response_model=SuccessResponse)
+@router.delete("/{receivable_id}", response_model=SuccessResponse)
 async def delete_receivable(
     receivable_id: str,
     current_user: CurrentSubAdminUser,
@@ -226,7 +237,7 @@ async def delete_receivable(
 
 
 # Status and filtering endpoints
-@router.get("/receivables/overdue", response_model=List[ReceivableResponse])
+@router.get("/status/overdue", response_model=List[ReceivableResponse])
 async def get_overdue_receivables(
     current_user: CurrentUser,
     db: DatabaseSession,
@@ -250,7 +261,7 @@ async def get_overdue_receivables(
     return receivable_service.get_overdue_receivables(db, team_id)
 
 
-@router.get("/receivables/statistics", response_model=ReceivableStats)
+@router.get("/analytics/statistics", response_model=ReceivableStats)
 async def get_receivable_statistics(
     current_user: CurrentUser,
     db: DatabaseSession,
@@ -296,7 +307,7 @@ async def get_receivable_statistics(
 
 
 # Analytics and reporting endpoints
-@router.get("/receivables/monthly-summary", response_model=dict)
+@router.get("/analytics/monthly-summary")
 async def get_monthly_receivables_summary(
     current_user: CurrentUser,
     db: DatabaseSession,
@@ -335,7 +346,7 @@ async def get_monthly_receivables_summary(
         )
 
 
-@router.get("/receivables/payment-trends", response_model=List[dict])
+@router.get("/analytics/payment-trends")
 async def get_payment_trends(
     current_user: CurrentUser,
     db: DatabaseSession,
@@ -373,7 +384,7 @@ async def get_payment_trends(
         )
 
 
-@router.get("/receivables/client-summary", response_model=List[dict])
+@router.get("/analytics/client-summary")
 async def get_client_summary(
     current_user: CurrentUser,
     db: DatabaseSession,
@@ -410,7 +421,7 @@ async def get_client_summary(
         )
 
 
-@router.get("/receivables/cash-flow", response_model=List[dict])
+@router.get("/analytics/cash-flow")
 async def get_cash_flow_projection(
     current_user: CurrentUser,
     db: DatabaseSession,
@@ -449,7 +460,7 @@ async def get_cash_flow_projection(
 
 
 # Utility endpoints
-@router.post("/receivables/mark-overdue", response_model=dict)
+@router.post("/actions/mark-overdue")
 async def mark_overdue_receivables(
     current_user: CurrentSubAdminUser,
     db: DatabaseSession,
@@ -464,7 +475,7 @@ async def mark_overdue_receivables(
     return {"marked_overdue": count, "message": f"Marked {count} receivables as overdue"}
 
 
-@router.get("/receivables/dashboard-summary", response_model=dict)
+@router.get("/dashboard/summary")
 async def get_receivables_dashboard_summary(
     current_user: CurrentUser,
     db: DatabaseSession,
@@ -495,8 +506,8 @@ async def get_receivables_dashboard_summary(
     # Get recent receivables
     recent_filters = ReceivableListFilter(team_id=team_id)
     recent_result = receivable_service.get_receivables(
-        db, recent_filters, 0, 5, "-created_at",
-        current_user.id, current_user.role, current_user.team_id
+        db, recent_filters, current_user.id, current_user.role, 
+        0, 5, "-created_at", current_user.team_id
     )
     
     return {

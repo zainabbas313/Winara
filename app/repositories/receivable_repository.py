@@ -1,16 +1,17 @@
+# Update your receivable_repository.py with this modified version
+
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 from datetime import datetime, date, timedelta
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import and_, or_, func, desc
+from sqlalchemy import and_, or_, func, desc, case
 from decimal import Decimal
 from .base_repository import BaseRepository
 from models.models import Receivable, ReceivableStatus, Bid, Team
 from schemas.receivable import ReceivableCreate, ReceivableUpdate, ReceivableListFilter
 from schemas.common import PaginatedResponse
 from interface.Irepositories.receivable_repository import IReceivableRepository
-from utils.helpers import is_overdue_payment, calculate_overdue_days
-from utils.sort_values import _apply_sorting
+from utils.sort_values import _apply_sorting_generic, _apply_receivable_filters
 import logging
 
 logger = logging.getLogger(__name__)
@@ -59,14 +60,14 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
                 joinedload(Receivable.team)
             )
             
-            # Apply filters
-            query = self._apply_receivable_filters(query, filters)
+            # Apply filters using the utility function
+            query = _apply_receivable_filters(query, filters)
             
-            # Apply sorting
-            query = _apply_sorting(query, sort_by, Receivable)
-            
-            # Get total count
+            # Get total count before pagination
             total_count = query.count()
+            
+            # Apply sorting using the utility function
+            query = _apply_sorting_generic(query, sort_by, Receivable)
             
             # Apply pagination
             items = query.offset(skip).limit(limit).all()
@@ -83,7 +84,11 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
             )
         except Exception as e:
             logger.error(f"Error getting receivables: {e}")
-            return PaginatedResponse(items=[], next_cursor=None, count=0)
+            return PaginatedResponse(
+                items=[], 
+                next_cursor=None, 
+                count=0
+            )
 
     def get_by_team(self, db: Session, team_id: UUID, filters: ReceivableListFilter,
                    skip: int = 0, limit: int = 20) -> PaginatedResponse:
@@ -162,18 +167,23 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
                 func.count(Receivable.id).label('total_receivables'),
                 func.sum(Receivable.contract_value).label('total_value'),
                 func.sum(
-                    func.case(
+                    case(
                         (Receivable.status == ReceivableStatus.PAID, Receivable.payment_amount),
                         else_=0
                     )
                 ).label('paid_value'),
                 func.sum(
-                    func.case(
-                        (Receivable.status.in_([ReceivableStatus.PENDING, ReceivableStatus.PARTIAL]), 
-                         Receivable.contract_value),
+                    case(
+                        (Receivable.status == ReceivableStatus.PENDING, Receivable.contract_value),
                         else_=0
                     )
-                ).label('pending_value')
+                ).label('pending_value'),
+                func.sum(
+                    case(
+                        (Receivable.status == ReceivableStatus.PARTIAL, Receivable.contract_value),
+                        else_=0
+                    )
+                ).label('partial_value')
             )
             
             if team_id:
@@ -194,6 +204,53 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
                 func.sum(Receivable.contract_value).label('overdue_value')
             ).first()
             
+            # Get status breakdown
+            status_breakdown = query.with_entities(
+                Receivable.status,
+                func.count(Receivable.id).label('count'),
+                func.sum(Receivable.contract_value).label('value')
+            ).group_by(Receivable.status).all()
+            
+            # Get currency breakdown
+            currency_breakdown = query.with_entities(
+                Receivable.currency,
+                func.count(Receivable.id).label('count'),
+                func.sum(Receivable.contract_value).label('value')
+            ).group_by(Receivable.currency).all()
+            
+            # Get current month and next month values
+            today = date.today()
+            current_month_start = date(today.year, today.month, 1)
+            if today.month == 12:
+                next_month_start = date(today.year + 1, 1, 1)
+                next_month_end = date(today.year + 1, 2, 1) - timedelta(days=1)
+            else:
+                next_month_start = date(today.year, today.month + 1, 1)
+                if today.month == 11:
+                    next_month_end = date(today.year + 1, 1, 1) - timedelta(days=1)
+                else:
+                    next_month_end = date(today.year, today.month + 2, 1) - timedelta(days=1)
+            
+            current_month_query = query.filter(
+                and_(
+                    Receivable.expected_payment_date >= current_month_start,
+                    Receivable.expected_payment_date < next_month_start
+                )
+            )
+            current_month_value = current_month_query.with_entities(
+                func.sum(Receivable.contract_value)
+            ).scalar() or Decimal('0')
+            
+            next_month_query = query.filter(
+                and_(
+                    Receivable.expected_payment_date >= next_month_start,
+                    Receivable.expected_payment_date <= next_month_end
+                )
+            )
+            next_month_value = next_month_query.with_entities(
+                func.sum(Receivable.contract_value)
+            ).scalar() or Decimal('0')
+            
             # Calculate average payment days for paid receivables
             paid_receivables = query.filter(
                 and_(
@@ -212,26 +269,50 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
             if payment_days:
                 avg_payment_days = sum(payment_days) / len(payment_days)
             
+            # Calculate collection rate
+            total_value = result.total_value or Decimal('0')
+            paid_value = result.paid_value or Decimal('0')
+            collection_rate = (paid_value / total_value * 100) if total_value > 0 else Decimal('0')
+
             return {
                 'total_receivables': result.total_receivables or 0,
                 'total_value': result.total_value or Decimal('0'),
                 'paid_value': result.paid_value or Decimal('0'),
                 'pending_value': result.pending_value or Decimal('0'),
+                'partial_value': result.partial_value or Decimal('0'),
                 'overdue_value': overdue_stats.overdue_value or Decimal('0'),
                 'overdue_count': overdue_stats.overdue_count or 0,
-                'avg_payment_days': Decimal(str(avg_payment_days)) if avg_payment_days else None
+                'avg_payment_days': Decimal(str(avg_payment_days)) if avg_payment_days else None,
+                'collection_rate': collection_rate,
+                'by_status': [
+                    {
+                        'status': breakdown.status.value,
+                        'count': breakdown.count,
+                        'value': breakdown.value or Decimal('0')
+                    }
+                    for breakdown in status_breakdown
+                ],
+                'by_currency': [
+                    {
+                        'currency': breakdown.currency,
+                        'count': breakdown.count,
+                        'value': breakdown.value or Decimal('0')
+                    }
+                    for breakdown in currency_breakdown
+                ],
+                'current_month_value': current_month_value,
+                'next_month_value': next_month_value
             }
             
         except Exception as e:
             logger.error(f"Error getting receivable statistics: {e}")
             return {}
-
     def get_team_statistics(self, db: Session, team_id: UUID) -> Dict[str, Any]:
         """Get team receivable statistics."""
         return self.get_statistics(db, team_id)
 
     def get_monthly_summary(self, db: Session, year: int, month: int, 
-                           team_id: Optional[UUID] = None) -> Dict[str, Any]:
+                       team_id: Optional[UUID] = None) -> Dict[str, Any]:
         """Get monthly receivables summary."""
         try:
             # Create date range for the month
@@ -256,7 +337,7 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
                 func.count(Receivable.id).label('count'),
                 func.sum(Receivable.contract_value).label('expected_value'),
                 func.sum(
-                    func.case(
+                    case(
                         (Receivable.status == ReceivableStatus.PAID, Receivable.payment_amount),
                         else_=0
                     )
@@ -289,7 +370,7 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
         except Exception as e:
             logger.error(f"Error getting monthly summary: {e}")
             return {}
-
+        
     def mark_overdue(self, db: Session) -> int:
         """Mark overdue receivables and return count."""
         try:
@@ -310,7 +391,7 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
             return 0
 
     def get_payment_trends(self, db: Session, team_id: Optional[UUID] = None,
-                          days: int = 90) -> List[Dict[str, Any]]:
+                        days: int = 90) -> List[Dict[str, Any]]:
         """Get payment trends over time."""
         try:
             start_date = date.today() - timedelta(days=days)
@@ -320,13 +401,13 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
                 func.count(Receivable.id).label('expected_count'),
                 func.sum(Receivable.contract_value).label('expected_value'),
                 func.count(
-                    func.case(
+                    case(
                         (Receivable.status == ReceivableStatus.PAID, 1),
                         else_=None
                     )
                 ).label('paid_count'),
                 func.sum(
-                    func.case(
+                    case(
                         (Receivable.status == ReceivableStatus.PAID, Receivable.payment_amount),
                         else_=0
                     )
@@ -362,13 +443,13 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
                 func.count(Receivable.id).label('total_receivables'),
                 func.sum(Receivable.contract_value).label('total_value'),
                 func.sum(
-                    func.case(
+                    case(
                         (Receivable.status == ReceivableStatus.PAID, Receivable.payment_amount),
                         else_=0
                     )
                 ).label('paid_value'),
                 func.count(
-                    func.case(
+                    case(
                         (Receivable.status == ReceivableStatus.OVERDUE, 1),
                         else_=None
                     )
@@ -397,7 +478,6 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
         except Exception as e:
             logger.error(f"Error getting client summary: {e}")
             return []
-
     def calculate_cash_flow(self, db: Session, team_id: Optional[UUID] = None,
                            days_ahead: int = 90) -> List[Dict[str, Any]]:
         """Calculate projected cash flow."""
@@ -440,23 +520,3 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
         except Exception as e:
             logger.error(f"Error calculating cash flow: {e}")
             return []
-
-    def _apply_receivable_filters(self, query, filters: ReceivableListFilter):
-        """Apply receivable-specific filters to query."""
-        if filters.team_id:
-            query = query.filter(Receivable.team_id == filters.team_id)
-        
-        if filters.status:
-            query = query.filter(Receivable.status == filters.status)
-        
-        if filters.date_from:
-            query = query.filter(Receivable.expected_payment_date >= filters.date_from)
-        
-        if filters.date_to:
-            query = query.filter(Receivable.expected_payment_date <= filters.date_to)
-        
-        if filters.client_name:
-            search_term = f"%{filters.client_name}%"
-            query = query.filter(Receivable.client_name.ilike(search_term))
-        
-        return query
