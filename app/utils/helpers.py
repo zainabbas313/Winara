@@ -35,7 +35,15 @@ def estimate_project_value(budget_type: str, budget_min: Optional[Decimal] = Non
 
 def calculate_days_since(date_time: datetime) -> int:
     """Calculate days since a given datetime."""
-    return (datetime.utcnow() - date_time).days
+    from datetime import timezone
+    
+    now = datetime.now(timezone.utc)
+    
+    # Ensure the input datetime is timezone-aware
+    if date_time.tzinfo is None:
+        date_time = date_time.replace(tzinfo=timezone.utc)
+    
+    return (now - date_time).days
 
 
 def can_edit_bid(created_at: datetime, edit_window_days: int = settings.BID_EDIT_WINDOW_DAYS) -> bool:

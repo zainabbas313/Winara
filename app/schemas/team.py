@@ -86,8 +86,8 @@ class TeamGoalResponse(TeamGoalBase):
 class TeamMemberResponse(BaseModel):
     id: UUID
     username: str
-    first_name: str
-    last_name: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     email: str
     role: str
     status: str
