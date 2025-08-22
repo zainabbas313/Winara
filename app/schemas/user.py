@@ -72,8 +72,8 @@ class UserListFilter(BaseModel):
 class UserSummary(BaseModel):
     id: UUID
     username: str
-    first_name: str
-    last_name: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     email: EmailStr
     role: UserRole
     status: UserStatus

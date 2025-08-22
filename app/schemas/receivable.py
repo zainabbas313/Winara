@@ -84,7 +84,7 @@ class ReceivableResponse(ReceivableBase):
     """Schema for receivable response."""
     id: UUID
     bid_id: UUID
-    team_id: UUID
+    team_id: Optional[UUID] = None
     actual_payment_date: Optional[date] = None
     payment_amount: Optional[Decimal] = None
     status: ReceivableStatus

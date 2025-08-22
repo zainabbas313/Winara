@@ -2,11 +2,12 @@ from typing import Optional, List
 from uuid import UUID
 from datetime import datetime, timedelta
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func
 from .base_repository import BaseRepository
-from models.models import User, UserSession, UserVertical, UserRole, UserStatus, SessionStatus
+from models.models import User, UserSession, UserVertical, UserRole, UserStatus, SessionStatus, Vertical
 from schemas.user import UserCreate, UserUpdate, UserListFilter
+from schemas.vertical import VerticalAssignmentFilter, VerticalAssignmentFilter
 from schemas.auth import DeviceInfo
 from schemas.common import PaginatedResponse
 from interface.Irepositories.user_repository import IUserRepository
@@ -333,3 +334,71 @@ class UserRepository(BaseRepository[User], IUserRepository):
         except Exception as e:
             logger.error(f"Error checking vertical assignment for user {user_id}: {e}")
             return False
+
+    # NEW METHODS FOR VERTICAL USER ASSIGNMENTS
+    def get_users_by_vertical(self, db: Session, vertical_id: UUID, 
+                             filters: Optional[VerticalAssignmentFilter] = None,
+                             skip: int = 0, limit: int = 20) -> PaginatedResponse:
+        """Get all users assigned to a specific vertical."""
+        try:
+            query = db.query(UserVertical).options(
+                joinedload(UserVertical.user)
+            ).filter(UserVertical.vertical_id == vertical_id)
+            
+            # Apply filters
+            if filters:
+                if filters.is_active is not None:
+                    query = query.filter(UserVertical.is_active == filters.is_active)
+                
+                if filters.role:
+                    query = query.join(User).filter(User.role == filters.role)
+                
+                if filters.team_id:
+                    query = query.join(User).filter(User.team_id == filters.team_id)
+                
+                if filters.q:
+                    search_term = f"%{filters.q}%"
+                    query = query.join(User).filter(
+                        or_(
+                            User.username.ilike(search_term),
+                            User.first_name.ilike(search_term),
+                            User.last_name.ilike(search_term),
+                            User.email.ilike(search_term)
+                        )
+                    )
+            
+            # Get total count
+            total_count = query.count()
+            
+            # Apply pagination and ordering
+            items = query.order_by(UserVertical.assigned_at.desc()).offset(skip).limit(limit).all()
+            
+            # Build next cursor if needed
+            next_cursor = None
+            if len(items) == limit and skip + limit < total_count:
+                next_cursor = f"offset:{skip + limit}"
+            
+            return PaginatedResponse(
+                items=items,
+                next_cursor=next_cursor,
+                count=len(items)
+            )
+        except Exception as e:
+            logger.error(f"Error getting users for vertical {vertical_id}: {e}")
+            return PaginatedResponse(items=[], next_cursor=None, count=0)
+
+    def get_vertical_assignment_details(self, db: Session, vertical_id: UUID, user_id: UUID) -> Optional[UserVertical]:
+        """Get detailed assignment information for a specific user-vertical combination."""
+        try:
+            return db.query(UserVertical).options(
+                joinedload(UserVertical.user),
+                joinedload(UserVertical.assigned_by)
+            ).filter(
+                and_(
+                    UserVertical.vertical_id == vertical_id,
+                    UserVertical.user_id == user_id
+                )
+            ).first()
+        except Exception as e:
+            logger.error(f"Error getting assignment details for vertical {vertical_id} and user {user_id}: {e}")
+            return None

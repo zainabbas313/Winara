@@ -2,7 +2,6 @@ from typing import Generic, TypeVar, Type, Optional, List, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc, asc, func, text
 from sqlalchemy.exc import SQLAlchemyError
-from models.models import User
 from models.models import Base
 from utils.helpers import parse_sort_parameter, parse_pagination_cursor, build_pagination_cursor
 from schemas.common import PaginatedResponse
@@ -12,7 +11,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-ModelType = TypeVar("ModelType", bound=Base)
+ModelType = TypeVar("ModelType", bound=Base) # type: ignore
 
 
 class BaseRepository(Generic[ModelType]):
@@ -56,8 +55,8 @@ class BaseRepository(Generic[ModelType]):
             if filters:
                 query = self._apply_filters(query, filters)
             
-            # Apply sorting
-            query = _apply_sorting(query, sort_by, User)
+            # Apply sorting - FIX: Use self.model instead of hardcoded User
+            query = _apply_sorting(query, sort_by, self.model)
             
             # Get total count before pagination
             total_count = query.count()
@@ -204,3 +203,67 @@ class BaseRepository(Generic[ModelType]):
         except SQLAlchemyError as e:
             logger.error(f"Error in get_or_create for {self.model.__name__}: {e}")
             raise
+
+    # ADDITIONAL USEFUL METHODS
+
+    def get_by_field(self, db: Session, field: str, value: Any) -> Optional[ModelType]:
+        """Get a record by a specific field value."""
+        try:
+            if not hasattr(self.model, field):
+                logger.error(f"Field {field} does not exist on {self.model.__name__}")
+                return None
+            return db.query(self.model).filter(getattr(self.model, field) == value).first()
+        except SQLAlchemyError as e:
+            logger.error(f"Error getting {self.model.__name__} by {field}: {e}")
+            return None
+
+    def update_by_id(self, db: Session, id: Any, **kwargs) -> Optional[ModelType]:
+        """Update a record by its ID."""
+        db_obj = self.get_by_id(db, id)
+        if db_obj:
+            return self.update(db, db_obj, **kwargs)
+        return None
+
+    def bulk_delete(self, db: Session, ids: List[Any]) -> int:
+        """Delete multiple records by their IDs."""
+        try:
+            deleted_count = db.query(self.model).filter(self.model.id.in_(ids)).delete()
+            db.commit()
+            return deleted_count
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error(f"Error bulk deleting {self.model.__name__}: {e}")
+            return 0
+
+    def soft_delete(self, db: Session, id: Any, deleted_field: str = 'is_deleted') -> bool:
+        """Soft delete a record by setting a deleted flag."""
+        try:
+            if not hasattr(self.model, deleted_field):
+                logger.error(f"Field {deleted_field} does not exist on {self.model.__name__}")
+                return False
+            
+            db_obj = self.get_by_id(db, id)
+            if db_obj:
+                setattr(db_obj, deleted_field, True)
+                db.commit()
+                return True
+            return False
+        except SQLAlchemyError as e:
+            db.rollback()
+            logger.error(f"Error soft deleting {self.model.__name__} with ID {id}: {e}")
+            return False
+
+    def get_active(self, db: Session, skip: int = 0, limit: int = 100, 
+                   active_field: str = 'is_active') -> List[ModelType]:
+        """Get all active records (where active_field is True)."""
+        try:
+            if not hasattr(self.model, active_field):
+                logger.warning(f"Field {active_field} does not exist on {self.model.__name__}, returning all records")
+                return self.get_multi(db, skip, limit).items
+            
+            return db.query(self.model).filter(
+                getattr(self.model, active_field) == True
+            ).offset(skip).limit(limit).all()
+        except SQLAlchemyError as e:
+            logger.error(f"Error getting active {self.model.__name__}: {e}")
+            return []

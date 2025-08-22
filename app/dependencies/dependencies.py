@@ -76,6 +76,19 @@ async def get_current_admin_user(
         )
     return current_user
 
+async def get_current_admin_user_or_sub_admin(
+    current_user: User = Depends(get_current_user)
+) -> User:
+    """Require admin user."""
+    print(current_user.role)
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUB_ADMIN]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin or Sub-Admin access required"
+        )
+
+    return current_user
+
 
 async def get_current_sub_admin_user(
     current_user: User = Depends(get_current_user)
@@ -188,4 +201,5 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
 CurrentAdminUser = Annotated[User, Depends(get_current_admin_user)]
 CurrentSubAdminUser = Annotated[User, Depends(get_current_sub_admin_user)]
+CurrentAdminOrSubAdminUser = Annotated[User, Depends(get_current_admin_user_or_sub_admin)]
 OptionalCurrentUser = Annotated[Optional[User], Depends(get_current_user_optional)]

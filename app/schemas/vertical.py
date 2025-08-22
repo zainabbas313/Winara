@@ -5,16 +5,19 @@ from uuid import UUID
 from decimal import Decimal
 import re
 
+from models.models import UserRole
+from schemas.user import UserSummary
+
 
 class VerticalBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=200, description="Vertical name")
     description: Optional[str] = Field(None, max_length=1000, description="Vertical description")
     parent_id: Optional[UUID] = Field(None, description="Parent vertical ID (None for root level)")
     level: Optional[int] = Field(None, ge=0, description="Hierarchy level (auto-calculated)")
-    sort_order: int = Field(default=0, ge=0, description="Display order")
+    sort_order: Optional[int] = Field(default=0, ge=0, description="Display order")
     is_active: bool = Field(default=True, description="Whether vertical is active")
     requires_approval: bool = Field(default=False, description="Whether assignments require approval")
-    competition_level: int = Field(default=1, ge=1, le=10, description="Competition level (1-10)")
+    competition_level: Optional[int] = Field(default=1, ge=1, le=10, description="Competition level (1-10)")
 
 
 class VerticalCreate(VerticalBase):
@@ -174,3 +177,30 @@ class VerticalPerformanceTrend(BaseModel):
 
 class BulkVerticalOperation(BaseModel):
     vertical_ids: List[UUID] = Field(..., min_items=1, max_items=100)
+
+
+
+# New schema for vertical user assignments
+class VerticalUserAssignmentResponse(BaseModel):
+    """Response schema for users assigned to a vertical"""
+    assignment_id: UUID
+    user: UserSummary
+    assigned_at: datetime
+    assigned_by_id: UUID
+    is_active: bool
+    total_earn: Optional[float] = Field(default=0)
+    connect_used: int = Field(default=0)
+    total_bids: int = Field(default=0)
+    success_rate: Optional[float] = None
+    notes: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class VerticalAssignmentFilter(BaseModel):
+    """Filter for vertical user assignments"""
+    is_active: Optional[bool] = Field(None, description="Filter by assignment status")
+    role: Optional[UserRole] = Field(None, description="Filter by user role")
+    team_id: Optional[UUID] = Field(None, description="Filter by team ID")
+    q: Optional[str] = Field(None, description="Search in user details")

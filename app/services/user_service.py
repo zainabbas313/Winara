@@ -6,7 +6,12 @@ from utils.security import validate_password_strength
 from interface.Iservices.user_service import IUserService
 from repositories.user_repository import UserRepository
 from repositories.audit_repository import AuditRepository
-from schemas.user import UserCreate, UserUpdate, UserResponse, UserListFilter
+from schemas.user import (
+    UserCreate, UserUpdate, UserResponse, UserListFilter
+)
+from schemas.vertical import (
+    VerticalUserAssignmentResponse, VerticalAssignmentFilter
+)
 from schemas.vertical import UserVerticalAssign, UserVerticalResponse
 from schemas.common import SuccessResponse, PaginatedResponse
 from models.models import UserRole, UserStatus, AuditAction
@@ -90,7 +95,6 @@ class UserService(IUserService):
             if not user:
                 return None
             
-            # Check permissions
             if not self.validate_user_permissions(
                 requesting_user_role, user.role.value,
                 requesting_user_team_id, user.team_id
@@ -101,6 +105,21 @@ class UserService(IUserService):
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail="Insufficient permissions to view this user"
                     )
+            return UserResponse.from_orm(user)
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error getting user {user_id}: {e}")
+            return None
+        
+    def get_user_itself(self, db: Session, user_id: UUID, requesting_user_id: UUID,
+                requesting_user_role: str, requesting_user_team_id: Optional[UUID] = None) -> Optional[UserResponse]:
+        """Get user by ID with role-based access control."""
+        try:
+            user = self.user_repo.get_by_id(db, user_id)
+            if not user:
+                return None
             
             return UserResponse.from_orm(user)
             
@@ -271,7 +290,7 @@ class UserService(IUserService):
             self.audit_repo.create_audit_log(
                 db, AuditAction.DELETE, "user", user_id, requesting_user_id, None,
                 None, None, f"User deleted: {user_info['username']}",
-                old_values=user_info
+                old_values=user_info, new_values={}
             )
             
             return SuccessResponse(message="User deleted successfully")
@@ -428,6 +447,111 @@ class UserService(IUserService):
                 detail="Vertical removal failed"
             )
 
+    # NEW METHODS FOR VERTICAL USER ASSIGNMENTS
+    def get_vertical_assigned_users(self, db: Session, vertical_id: UUID,
+                                   requesting_user_id: UUID, requesting_user_role: str,
+                                   requesting_user_team_id: Optional[UUID] = None,
+                                   filters: Optional[VerticalAssignmentFilter] = None,
+                                   skip: int = 0, limit: int = 20) -> PaginatedResponse[VerticalUserAssignmentResponse]:
+        """Get all users assigned to a specific vertical."""
+        try:
+            # Validate access to vertical information
+            if not self.validate_vertical_access_permission(
+                db, vertical_id, requesting_user_id, requesting_user_role, requesting_user_team_id
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Insufficient permissions to view vertical assignments"
+                )
+            
+            # Validate vertical exists
+            from repositories.vertical_repository import VerticalRepository
+            vertical_repo = VerticalRepository()
+            vertical = vertical_repo.get_by_id(db, vertical_id)
+            if not vertical:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Vertical not found"
+                )
+            
+            # Apply team-based filtering for sub-admins
+            if requesting_user_role == UserRole.SUB_ADMIN.value and filters:
+                filters.team_id = requesting_user_team_id
+            
+            result = self.user_repo.get_users_by_vertical(db, vertical_id, filters, skip, limit)
+            
+            # Convert to response objects
+            assignment_responses = []
+            for assignment in result.items:
+                response = VerticalUserAssignmentResponse(
+                    assignment_id=assignment.id,
+                    user=assignment.user,
+                    assigned_at=assignment.assigned_at,
+                    assigned_by_id=assignment.assigned_by_id,
+                    is_active=assignment.is_active,
+                    total_earn=float(assignment.total_earn) if assignment.total_earn else 0,
+                    connect_used=assignment.connect_used or 0,
+                    total_bids=assignment.total_bids or 0,
+                    success_rate=float(assignment.success_rate) if assignment.success_rate else None,
+                    notes=assignment.notes
+                )
+                assignment_responses.append(response)
+            
+            return PaginatedResponse(
+                items=assignment_responses,
+                next_cursor=result.next_cursor,
+                count=result.count
+            )
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error getting users for vertical {vertical_id}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to retrieve vertical assignments"
+            )
+
+    def get_vertical_user_assignment_details(self, db: Session, vertical_id: UUID, user_id: UUID,
+                                           requesting_user_id: UUID, requesting_user_role: str,
+                                           requesting_user_team_id: Optional[UUID] = None) -> Optional[VerticalUserAssignmentResponse]:
+        """Get detailed assignment information for a specific user-vertical combination."""
+        try:
+            # Validate access
+            if not self.validate_vertical_access_permission(
+                db, vertical_id, requesting_user_id, requesting_user_role, requesting_user_team_id
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Insufficient permissions to view assignment details"
+                )
+            
+            assignment = self.user_repo.get_vertical_assignment_details(db, vertical_id, user_id)
+            if not assignment:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Assignment not found"
+                )
+            
+            return VerticalUserAssignmentResponse(
+                assignment_id=assignment.id,
+                user=assignment.user,
+                assigned_at=assignment.assigned_at,
+                assigned_by_id=assignment.assigned_by_id,
+                is_active=assignment.is_active,
+                total_earn=float(assignment.total_earn) if assignment.total_earn else 0,
+                connect_used=assignment.connect_used or 0,
+                total_bids=assignment.total_bids or 0,
+                success_rate=float(assignment.success_rate) if assignment.success_rate else None,
+                notes=assignment.notes
+            )
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error getting assignment details for vertical {vertical_id} and user {user_id}: {e}")
+            return None
+
     def validate_user_permissions(self, requesting_user_role: str, target_user_role: str,
                                  requesting_team_id: Optional[UUID], 
                                  target_team_id: Optional[UUID]) -> bool:
@@ -460,6 +584,35 @@ class UserService(IUserService):
         # Members can only view their own verticals
         if requesting_user_role == UserRole.MEMBER.value:
             return str(user_id) == str(requesting_user_id)
+        
+        return False
+
+    def validate_vertical_access_permission(self, db: Session, vertical_id: UUID,
+                                          requesting_user_id: UUID, requesting_user_role: str,
+                                          requesting_user_team_id: Optional[UUID] = None) -> bool:
+        """Validate if user can access vertical assignment information."""
+        # Admins can access everything
+        if requesting_user_role == UserRole.ADMIN.value:
+            return True
+        
+        # Sub-admins can access verticals if their team members have assignments
+        if requesting_user_role == UserRole.SUB_ADMIN.value:
+            if not requesting_user_team_id:
+                return False
+            
+            # Check if any team member has this vertical assigned
+            from models.models import User, UserVertical
+            team_assignment = db.query(UserVertical).join(User).filter(
+                UserVertical.vertical_id == vertical_id,
+                User.team_id == requesting_user_team_id,
+                UserVertical.is_active == True
+            ).first()
+            
+            return team_assignment is not None
+        
+        # Members can only see verticals they're assigned to
+        if requesting_user_role == UserRole.MEMBER.value:
+            return self.user_repo.check_vertical_assignment(db, requesting_user_id, vertical_id)
         
         return False
 
