@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
+import logging
+
 from dependencies.dependencies import (
     get_db, get_current_user, get_current_sub_admin_user, get_current_admin_user,
     DatabaseSession, CurrentUser, CurrentSubAdminUser, CurrentAdminUser
@@ -16,111 +18,79 @@ from schemas.bid import (
 )
 from schemas.common import SuccessResponse, PaginatedResponse
 from models.models import UserRole, BidStatus, BudgetType
-import logging
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter()
 
 # Dependency injection
 def get_bid_service() -> BidService:
     return BidService()
 
+# =====================================================================
+# FIXED PATHS FIRST (so they don't conflict with dynamic ones)
+# =====================================================================
 
-# ============================================================================
-# BASIC CRUD OPERATIONS
-# ============================================================================
-
-@router.post("/bids", response_model=BidResponse)
-async def create_bid(
-    bid_data: BidCreate,
+@router.get("/teams/statistics", response_model=List[TeamBidStats])
+async def get_team_statistics(
     current_user: CurrentUser,
     db: DatabaseSession,
+    team_id: Optional[str] = Query(None, description="Specific team ID (Admin only)"),
     bid_service: BidService = Depends(get_bid_service)
 ):
-    """Create a new bid with validation and permission checks."""
-    return bid_service.create_bid(
-        db, bid_data, current_user.id,
-        current_user.role, current_user.team_id
-    )
-
-
-@router.get("/bids/{bid_id}", response_model=BidResponse)
-async def get_bid(
-    bid_id: str,
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    bid_service: BidService = Depends(get_bid_service)
-):
-    """
-    Get bid by ID with role-based access control.
-    
-    Access control:
-    - Admin: Can see any bid
-    - Sub-Admin: Can see bids from their team
-    - Member: Can see only their own bids
-    """
-    try:
-        bid_uuid = UUID(bid_id)
-        bid = bid_service.get_bid(
-            db, bid_uuid, current_user.id,
-            current_user.role, current_user.team_id
+    """Get team bid statistics (all or filtered by team_id)."""
+    if current_user.role == UserRole.MEMBER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Members cannot access team statistics"
         )
-        
-        if not bid:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Bid not found"
-            )
-        
-        return bid
+
+    try:
+        team_uuid = UUID(team_id) if team_id else None
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid bid ID format"
+            detail="Invalid team ID format"
+        )
+
+    try:
+        return bid_service.get_team_statistics(
+            db, team_uuid, current_user.role, current_user.team_id
+        )
+    except Exception as e:
+        logger.exception("Error fetching team statistics")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching team statistics: {str(e)}"
         )
 
 
-@router.get("/bids", response_model=PaginatedResponse[BidResponse])
-async def get_bids(
+@router.get("/bids/statistics", response_model=BidStats)
+async def get_bid_statistics(
     current_user: CurrentUser,
     db: DatabaseSession,
-    status_filter: Optional[BidStatus] = Query(None, alias="status", description="Filter by bid status"),
-    team_id: Optional[str] = Query(None, description="Filter by team ID (Admin/Sub-Admin only)"),
-    member_id: Optional[str] = Query(None, description="Filter by member ID (Admin/Sub-Admin only)"),
+    team_id: Optional[str] = Query(None, description="Filter by team ID"),
+    member_id: Optional[str] = Query(None, description="Filter by member ID"),
     vertical_id: Optional[str] = Query(None, description="Filter by vertical ID"),
-    budget_type: Optional[BudgetType] = Query(None, description="Filter by budget type"),
-    date_from: Optional[datetime] = Query(None, description="Filter bids from this date"),
-    date_to: Optional[datetime] = Query(None, description="Filter bids until this date"),
-    q: Optional[str] = Query(None, description="Search in job title, client name, proposal"),
-    skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
-    sort: str = Query("-submitted_at", description="Sort field and direction"),
+    date_from: Optional[datetime] = Query(None, description="Filter from this date"),
+    date_to: Optional[datetime] = Query(None, description="Filter until this date"),
     bid_service: BidService = Depends(get_bid_service)
 ):
-    """
-    Get bids with filtering and pagination.
-    
-    Access control:
-    - Admin: Can see all bids, can filter by any team/member
-    - Sub-Admin: Can see bids from their team only
-    - Member: Can see only their own bids
-    """
-    filters = BidListFilter(
-        status=status_filter,
-        team_id=UUID(team_id) if team_id else None,
-        member_id=UUID(member_id) if member_id else None,
-        vertical_id=UUID(vertical_id) if vertical_id else None,
-        budget_type=budget_type,
-        date_from=date_from,
-        date_to=date_to,
-        q=q
-    )
-    
-    return bid_service.get_bids(
-        db, filters, current_user.id, current_user.role, 
-        skip, limit, sort, current_user.team_id
-    )
+    """Get bid statistics with role-based filtering."""
+    try:
+        team_uuid = UUID(team_id) if team_id else None
+        member_uuid = UUID(member_id) if member_id else None
+        vertical_uuid = UUID(vertical_id) if vertical_id else None
+        
+        return bid_service.get_bid_statistics(
+            db, team_uuid, member_uuid, vertical_uuid,
+            current_user.role, current_user.team_id, date_from, date_to
+        )
+        
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid UUID format"
+        )
 
 
 @router.get("/bids/enhanced", response_model=PaginatedResponse[BidResponse])
@@ -163,16 +133,168 @@ async def get_bids_enhanced(
             sort_field=sort_field,
             sort_direction=sort_direction
         )
-        
+
         return bid_service.get_bids_enhanced(
-            db, filters, current_user.id, current_user.role, 
+            db, filters, current_user.id, current_user.role,
             skip, limit, current_user.team_id
         )
+
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid UUID format: {str(e)}"
+            detail=f"Invalid parameter: {str(e)}"
         )
+    except SQLAlchemyError as e:
+        logger.error(f"Database error while fetching bids: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="A database error occurred while retrieving bids"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Unexpected error in get_bids_enhanced: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while processing the request"
+        )
+
+
+@router.get("/bids/recent", response_model=List[BidResponse])
+async def get_recent_bids(
+    current_user: CurrentUser,
+    db: DatabaseSession,
+    limit: int = Query(10, ge=1, le=50, description="Number of recent bids to return"),
+    bid_service: BidService = Depends(get_bid_service)
+):
+    """Get recent bids with role-based filtering."""
+    return bid_service.get_recent_bids(
+        db, current_user.id,
+        current_user.role, limit, current_user.team_id
+    )
+
+
+@router.get("/bids/winning", response_model=PaginatedResponse[BidResponse])
+async def get_winning_bids(
+    current_user: CurrentUser,
+    db: DatabaseSession,
+    skip: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
+    bid_service: BidService = Depends(get_bid_service)
+):
+    """Get winning bids with role-based filtering."""
+    return bid_service.get_winning_bids(
+        db, current_user.id,current_user.role, skip, limit, 
+         current_user.team_id
+    )
+
+
+@router.get("/bids/my-bids", response_model=PaginatedResponse[BidResponse])
+async def get_my_bids(
+    current_user: CurrentUser,
+    db: DatabaseSession,
+    status_filter: Optional[BidStatus] = Query(None, alias="status", description="Filter by bid status"),
+    vertical_id: Optional[str] = Query(None, description="Filter by vertical ID"),
+    date_from: Optional[datetime] = Query(None, description="Filter bids from this date"),
+    date_to: Optional[datetime] = Query(None, description="Filter bids until this date"),
+    skip: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
+    sort: str = Query("-submitted_at", description="Sort field and direction"),
+    bid_service: BidService = Depends(get_bid_service)
+):
+    """Get current user's bids (convenience endpoint for members)."""
+    filters = BidListFilter(
+        status=status_filter,
+        vertical_id=UUID(vertical_id) if vertical_id else None,
+        date_from=date_from,
+        date_to=date_to
+    )
+    
+    return bid_service.get_my_bids(
+        db, filters, current_user.id, skip, limit, sort
+    )
+
+
+# =====================================================================
+# CORE CRUD ENDPOINTS
+# =====================================================================
+
+@router.post("/bids", response_model=BidResponse)
+async def create_bid(
+    bid_data: BidCreate,
+    current_user: CurrentUser,
+    db: DatabaseSession,
+    bid_service: BidService = Depends(get_bid_service)
+):
+    """Create a new bid with validation and permission checks."""
+    return bid_service.create_bid(
+        db, bid_data, current_user.id,
+        current_user.role, current_user.team_id
+    )
+
+@router.get("/bids", response_model=PaginatedResponse[BidResponse])
+async def get_bids(
+    current_user: CurrentUser,
+    db: DatabaseSession,
+    status_filter: Optional[BidStatus] = Query(None, alias="status", description="Filter by bid status"),
+    team_id: Optional[str] = Query(None, description="Filter by team ID (Admin/Sub-Admin only)"),
+    member_id: Optional[str] = Query(None, description="Filter by member ID (Admin/Sub-Admin only)"),
+    vertical_id: Optional[str] = Query(None, description="Filter by vertical ID"),
+    budget_type: Optional[BudgetType] = Query(None, description="Filter by budget type"),
+    date_from: Optional[datetime] = Query(None, description="Filter bids from this date"),
+    date_to: Optional[datetime] = Query(None, description="Filter bids until this date"),
+    q: Optional[str] = Query(None, description="Search in job title, client name, proposal"),
+    skip: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
+    sort: str = Query("-submitted_at", description="Sort field and direction"),
+    bid_service: BidService = Depends(get_bid_service)
+):
+    """Get bids with filtering and pagination."""
+    filters = BidListFilter(
+        status=status_filter,
+        team_id=UUID(team_id) if team_id else None,
+        member_id=UUID(member_id) if member_id else None,
+        vertical_id=UUID(vertical_id) if vertical_id else None,
+        budget_type=budget_type,
+        date_from=date_from,
+        date_to=date_to,
+        q=q
+    )
+    
+    return bid_service.get_bids(
+        db, filters, current_user.id, current_user.role, 
+        skip, limit, sort, current_user.team_id
+    )
+
+
+@router.get("/bids/{bid_id}", response_model=BidResponse)
+async def get_bid(
+    bid_id: str,
+    current_user: CurrentUser,
+    db: DatabaseSession,
+    bid_service: BidService = Depends(get_bid_service)
+):
+    """Get bid by ID with role-based access control."""
+    try:
+        bid_uuid = UUID(bid_id)
+        bid = bid_service.get_bid(
+            db, bid_uuid, current_user.id,
+            current_user.role, current_user.team_id
+        )
+        
+        if not bid:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Bid not found"
+            )
+        
+        return bid
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid bid ID format"
+        )
+
 
 @router.put("/bids/{bid_id}", response_model=BidResponse)
 async def update_bid(
@@ -182,14 +304,7 @@ async def update_bid(
     db: DatabaseSession,
     bid_service: BidService = Depends(get_bid_service)
 ):
-    """
-    Update bid with role-based permissions.
-    
-    Access control:
-    - Admin: Can update any bid
-    - Sub-Admin: Can update bids from their team
-    - Member: Can update their own bids (within 5-day window)
-    """
+    """Update bid with role-based permissions."""
     try:
         bid_uuid = UUID(bid_id)
         bid = bid_service.update_bid(
@@ -248,14 +363,7 @@ async def delete_bid(
     db: DatabaseSession,
     bid_service: BidService = Depends(get_bid_service)
 ):
-    """
-    Delete bid with role-based permissions.
-    
-    Access control:
-    - Admin: Can delete any bid
-    - Sub-Admin: Can delete bids from their team
-    - Member: Can delete their own bids (within 5-day window, not viewed)
-    """
+    """Delete bid with role-based permissions."""
     try:
         bid_uuid = UUID(bid_id)
         return bid_service.delete_bid(
@@ -269,78 +377,9 @@ async def delete_bid(
         )
 
 
-# ============================================================================
-# STATISTICS AND ANALYTICS ENDPOINTS
-# ============================================================================
-
-@router.get("/bids/statistics", response_model=BidStats)
-async def get_bid_statistics(
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    team_id: Optional[str] = Query(None, description="Filter by team ID"),
-    member_id: Optional[str] = Query(None, description="Filter by member ID"),
-    vertical_id: Optional[str] = Query(None, description="Filter by vertical ID"),
-    date_from: Optional[datetime] = Query(None, description="Filter from this date"),
-    date_to: Optional[datetime] = Query(None, description="Filter until this date"),
-    bid_service: BidService = Depends(get_bid_service)
-):
-    """
-    Get bid statistics with role-based filtering.
-    
-    Returns:
-    - Total bids count, wins count, win rate percentage
-    - Total connects used, total cost spent
-    - Average response time
-    """
-    try:
-        team_uuid = UUID(team_id) if team_id else None
-        member_uuid = UUID(member_id) if member_id else None
-        vertical_uuid = UUID(vertical_id) if vertical_id else None
-        
-        return bid_service.get_bid_statistics(
-            db, team_uuid, member_uuid, vertical_uuid,
-            current_user.role, current_user.team_id, date_from, date_to
-        )
-        
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid UUID format"
-        )
-
-
-@router.get("/teams/statistics", response_model=List[TeamBidStats])
-async def get_team_statistics(
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    team_id: Optional[str] = Query(None, description="Specific team ID (Admin only)"),
-    bid_service: BidService = Depends(get_bid_service)
-):
-    """
-    Get team bid statistics.
-    
-    Access control:
-    - Admin: Can see all teams or specific team
-    - Sub-Admin: Can see only their team
-    - Member: Cannot access
-    """
-    if current_user.role == UserRole.MEMBER:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Members cannot access team statistics"
-        )
-    
-    try:
-        team_uuid = UUID(team_id) if team_id else None
-        return bid_service.get_team_statistics(
-            db, team_uuid, current_user.role, current_user.team_id
-        )
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid team ID format"
-        )
-
+# =====================================================================
+# ANALYTICS / DASHBOARD
+# =====================================================================
 
 @router.get("/members/rankings", response_model=PaginatedResponse[MemberBidRanking])
 async def get_member_rankings(
@@ -357,14 +396,7 @@ async def get_member_rankings(
     limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
     bid_service: BidService = Depends(get_bid_service)
 ):
-    """
-    Get member bid rankings/leaderboard.
-    
-    Access control:
-    - Admin: Can see all members across all teams
-    - Sub-Admin: Can see members from their team only
-    - Member: Cannot access rankings
-    """
+    """Get member bid rankings/leaderboard."""
     if current_user.role == UserRole.MEMBER:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -403,14 +435,7 @@ async def get_earnings(
     date_to: Optional[datetime] = Query(None, description="Filter until this date"),
     bid_service: BidService = Depends(get_bid_service)
 ):
-    """
-    Get earnings data with breakdown by vertical, team, and member.
-    
-    Access control:
-    - Admin: Can see earnings for any team/member/vertical
-    - Sub-Admin: Can see earnings for their team and team members
-    - Member: Can see only their own earnings
-    """
+    """Get earnings data with breakdown by vertical, team, and member."""
     try:
         team_uuid = UUID(team_id) if team_id else None
         member_uuid = UUID(member_id) if member_id else None
@@ -478,9 +503,48 @@ async def get_monthly_trends(
         )
 
 
-# ============================================================================
-# BULK OPERATIONS (SUB-ADMIN AND ADMIN ONLY)
-# ============================================================================
+@router.get("/dashboard-summary", response_model=DashboardSummary)
+async def get_dashboard_summary(
+    current_user: CurrentUser,
+    db: DatabaseSession,
+    bid_service: BidService = Depends(get_bid_service)
+):
+    """Get bid summary for dashboard display."""
+    return bid_service.get_dashboard_summary(
+        db, current_user.id, current_user.role, current_user.team_id
+    )
+
+
+@router.get("/top-performers", response_model=List[MemberBidRanking])
+async def get_top_performers(
+    current_user: CurrentUser,
+    db: DatabaseSession,
+    team_id: Optional[str] = Query(None, description="Filter by team ID"),
+    limit: int = Query(5, ge=1, le=20, description="Number of top performers to return"),
+    bid_service: BidService = Depends(get_bid_service)
+):
+    """Get top performing members."""
+    if current_user.role == UserRole.MEMBER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Members cannot access top performers list"
+        )
+    
+    try:
+        team_uuid = UUID(team_id) if team_id else None
+        return bid_service.get_top_performers(
+            db, team_uuid, limit, current_user.role, current_user.team_id
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid team ID format"
+        )
+
+
+# =====================================================================
+# BULK OPERATIONS
+# =====================================================================
 
 @router.patch("/bids/bulk-status", response_model=List[BidResponse])
 async def bulk_update_bid_status(
@@ -490,12 +554,7 @@ async def bulk_update_bid_status(
     db: DatabaseSession,
     bid_service: BidService = Depends(get_bid_service)
 ):
-    """
-    Bulk update bid status (Sub-Admin and Admin only).
-    
-    - **bid_ids**: List of bid IDs to update
-    - **status**: New status to apply to all bids
-    """
+    """Bulk update bid status (Sub-Admin and Admin only)."""
     try:
         bid_uuids = [UUID(bid_id) for bid_id in bid_ids]
         return bid_service.bulk_update_status(
@@ -602,121 +661,9 @@ async def execute_bulk_operation(
         )
 
 
-# ============================================================================
+# =====================================================================
 # CONVENIENCE ENDPOINTS
-# ============================================================================
-
-@router.get("/bids/recent", response_model=List[BidResponse])
-async def get_recent_bids(
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    limit: int = Query(10, ge=1, le=50, description="Number of recent bids to return"),
-    bid_service: BidService = Depends(get_bid_service)
-):
-    """Get recent bids with role-based filtering."""
-    return bid_service.get_recent_bids(
-        db, limit, current_user.id,
-        current_user.role, current_user.team_id
-    )
-
-
-@router.get("/bids/winning", response_model=PaginatedResponse[BidResponse])
-async def get_winning_bids(
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
-    bid_service: BidService = Depends(get_bid_service)
-):
-    """Get winning bids with role-based filtering."""
-    return bid_service.get_winning_bids(
-        db, skip, limit, current_user.id,
-        current_user.role, current_user.team_id
-    )
-
-
-@router.get("/bids/my-bids", response_model=PaginatedResponse[BidResponse])
-async def get_my_bids(
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    status_filter: Optional[BidStatus] = Query(None, alias="status", description="Filter by bid status"),
-    vertical_id: Optional[str] = Query(None, description="Filter by vertical ID"),
-    date_from: Optional[datetime] = Query(None, description="Filter bids from this date"),
-    date_to: Optional[datetime] = Query(None, description="Filter bids until this date"),
-    skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
-    sort: str = Query("-submitted_at", description="Sort field and direction"),
-    bid_service: BidService = Depends(get_bid_service)
-):
-    """Get current user's bids (convenience endpoint for members)."""
-    filters = BidListFilter(
-        status=status_filter,
-        vertical_id=UUID(vertical_id) if vertical_id else None,
-        date_from=date_from,
-        date_to=date_to
-    )
-    
-    return bid_service.get_my_bids(
-        db, filters, current_user.id, skip, limit, sort
-    )
-
-
-@router.get("/dashboard-summary", response_model=DashboardSummary)
-async def get_dashboard_summary(
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    bid_service: BidService = Depends(get_bid_service)
-):
-    """
-    Get bid summary for dashboard display.
-    
-    Returns summary statistics based on user role:
-    - Admin: System-wide summary
-    - Sub-Admin: Team summary
-    - Member: Personal summary
-    """
-    return bid_service.get_dashboard_summary(
-        db, current_user.id, current_user.role, current_user.team_id
-    )
-
-
-@router.get("/top-performers", response_model=List[MemberBidRanking])
-async def get_top_performers(
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    team_id: Optional[str] = Query(None, description="Filter by team ID"),
-    limit: int = Query(5, ge=1, le=20, description="Number of top performers to return"),
-    bid_service: BidService = Depends(get_bid_service)
-):
-    """
-    Get top performing members.
-    
-    Access control:
-    - Admin: Can see top performers across all teams or specific team
-    - Sub-Admin: Can see top performers from their team
-    - Member: Cannot access
-    """
-    if current_user.role == UserRole.MEMBER:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Members cannot access top performers list"
-        )
-    
-    try:
-        team_uuid = UUID(team_id) if team_id else None
-        return bid_service.get_top_performers(
-            db, team_uuid, limit, current_user.role, current_user.team_id
-        )
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid team ID format"
-        )
-
-
-# ============================================================================
-# UTILITY ENDPOINTS
-# ============================================================================
+# =====================================================================
 
 @router.get("/bids/{bid_id}/can-edit", response_model=dict)
 async def check_bid_edit_permission(
@@ -725,14 +672,7 @@ async def check_bid_edit_permission(
     db: DatabaseSession,
     bid_service: BidService = Depends(get_bid_service)
 ):
-    """
-    Check if current user can edit the specified bid.
-    
-    Returns information about edit permissions including:
-    - can_edit: Boolean indicating if bid can be edited
-    - reason: Reason if edit is not allowed
-    - days_remaining: Days remaining in edit window (if applicable)
-    """
+    """Check if current user can edit the specified bid."""
     try:
         bid_uuid = UUID(bid_id)
         return bid_service.check_bid_edit_permission(
@@ -751,20 +691,13 @@ async def calculate_bid_costs(
     boost_connects: int = Query(0, ge=0, le=50, description="Number of boost connects to use"),
     bid_service: BidService = Depends(get_bid_service)
 ):
-    """
-    Calculate bid costs for given connect usage.
-    
-    Returns:
-    - connect_cost: Cost of regular connects
-    - boost_cost: Cost of boost connects
-    - total_cost: Total cost
-    """
+    """Calculate bid costs for given connect usage."""
     return bid_service.calculate_bid_costs(connects_used, boost_connects)
 
 
-# ============================================================================
-# VERTICAL-SPECIFIC ENDPOINTS
-# ============================================================================
+# =====================================================================
+# VERTICAL-SPECIFIC
+# =====================================================================
 
 @router.get("/verticals/{vertical_id}/bids", response_model=PaginatedResponse[BidResponse])
 async def get_bids_by_vertical(
@@ -779,14 +712,7 @@ async def get_bids_by_vertical(
     sort: str = Query("-submitted_at", description="Sort field and direction"),
     bid_service: BidService = Depends(get_bid_service)
 ):
-    """
-    Get all bids for a specific vertical.
-    
-    Access control based on user role:
-    - Admin: Can see all bids in vertical
-    - Sub-Admin: Can see team bids in vertical
-    - Member: Can see own bids in vertical
-    """
+    """Get all bids for a specific vertical."""
     try:
         filters = BidListFilter(
             status=status_filter,
@@ -806,32 +732,9 @@ async def get_bids_by_vertical(
         )
 
 
-# @router.get("/verticals/{vertical_id}/statistics", response_model=BidStats)
-# async def get_vertical_statistics(
-#     vertical_id: str,
-#     current_user: CurrentUser,
-#     db: DatabaseSession,
-#     date_from: Optional[datetime] = Query(None, description="Filter from this date"),
-#     date_to: Optional[datetime] = Query(None, description="Filter until this date"),
-#     bid_service: BidService = Depends(get_bid_service)
-# ):
-#     """Get bid statistics for a specific vertical."""
-#     try:
-#         vertical_uuid = UUID(vertical_id)
-#         return bid_service.get_bid_statistics(
-#             db, None, None, vertical_uuid, current_user.role,
-#             current_user.team_id, date_from, date_to
-#         )
-#     except ValueError:
-#         raise HTTPException(
-#             status_code=status.HTTP_400_BAD_REQUEST,
-#             detail="Invalid vertical ID format"
-#         )
-
-
-# ============================================================================
-# TEAM-SPECIFIC ENDPOINTS (ADMIN/SUB-ADMIN ONLY)
-# ============================================================================
+# =====================================================================
+# TEAM-SPECIFIC
+# =====================================================================
 
 @router.get("/teams/{team_id}/bids", response_model=PaginatedResponse[BidResponse])
 async def get_team_bids(
@@ -847,13 +750,7 @@ async def get_team_bids(
     sort: str = Query("-submitted_at", description="Sort field and direction"),
     bid_service: BidService = Depends(get_bid_service)
 ):
-    """
-    Get all bids for a specific team.
-    
-    Access control:
-    - Admin: Can see any team's bids
-    - Sub-Admin: Can see only their team's bids
-    """
+    """Get all bids for a specific team."""
     try:
         team_uuid = UUID(team_id)
         
