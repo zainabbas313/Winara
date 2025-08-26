@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings
 from typing import Optional
 import os
@@ -13,9 +14,6 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "postgresql://postgres:zain@localhost/winara"
     DATABASE_TEST_URL: Optional[str] = None
-    
-    # Redis
-    REDIS_URL: str = "redis://localhost:6379/0"
     
     # Security
     SECRET_KEY: str = "your-secret-key-change-this-in-production"
@@ -62,6 +60,88 @@ class Settings(BaseSettings):
     
     # Business rules
     BID_EDIT_WINDOW_DAYS: int = 5
+
+    # Cache settings
+    REDIS_URL: Optional[str] = Field(
+        default=os.getenv("REDIS_URL", "redis://localhost:6379/1"),
+        description="Redis connection URL for caching"
+    )
+    CACHE_TTL_MINUTES: int = Field(
+        default=15,
+        description="Default cache TTL in minutes"
+    )
+    CACHE_ENABLED: bool = Field(
+        default=True,
+        description="Enable/disable caching"
+    )
+    
+    # Rate limiting
+    RATE_LIMIT_ENABLED: bool = Field(
+        default=True,
+        description="Enable/disable rate limiting"
+    )
+    DEFAULT_RATE_LIMIT: int = Field(
+        default=100,
+        description="Default rate limit per hour"
+    )
+    
+    # Export settings
+    MAX_EXPORT_SIZE_MB: int = Field(
+        default=50,
+        description="Maximum export file size in MB"
+    )
+    EXPORT_CLEANUP_HOURS: int = Field(
+        default=24,
+        description="Hours after which export files are cleaned up"
+    )
+    EXPORT_DIRECTORY: str = Field(
+        default="/data",
+        description="Directory for temporary export files"
+    )
+    
+    # Analytics thresholds
+    WIN_RATE_BENCHMARK: float = Field(
+        default=15.0,
+        description="Industry benchmark for win rate percentage"
+    )
+    COST_PER_WIN_THRESHOLD: float = Field(
+        default=50.0,
+        description="Threshold for high cost per win alert"
+    )
+    ROI_THRESHOLD: float = Field(
+        default=100.0,
+        description="Minimum acceptable ROI percentage"
+    )
+    
+    # Performance settings
+    MAX_CHART_DATA_POINTS: int = Field(
+        default=365,
+        description="Maximum data points in chart responses"
+    )
+    QUERY_TIMEOUT_SECONDS: int = Field(
+        default=30,
+        description="Database query timeout"
+    )
+    
+    # Security settings
+    AUDIT_ENABLED: bool = Field(
+        default=True,
+        description="Enable audit logging"
+    )
+    SENSITIVE_DATA_MASKING: bool = Field(
+        default=True,
+        description="Mask sensitive data in logs"
+    )
+    
+    # ML/AI settings (for future use)
+    ENABLE_PREDICTIVE_ANALYTICS: bool = Field(
+        default=True,
+        description="Enable predictive analytics features"
+    )
+    MODEL_CONFIDENCE_THRESHOLD: float = Field(
+        default=0.7,
+        description="Minimum confidence for ML predictions"
+    )
     
     class Config:
         env_file = ".env"

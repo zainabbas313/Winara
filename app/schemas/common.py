@@ -1,10 +1,11 @@
-from pydantic import BaseModel, Field
-from typing import Optional, Generic, TypeVar, List, Any
+from pydantic import BaseModel, Field, validator
+from typing import List, Optional, Generic, TypeVar, Dict, Any
 from datetime import datetime
 from uuid import UUID
+from typing import Optional 
+from schemas.analytics import ReportType, ExportFormat
 
 T = TypeVar('T')
-
 
 class BaseResponse(BaseModel):
     success: bool = True
@@ -195,3 +196,28 @@ class HealthCheckResponse(BaseModel):
             datetime: lambda v: v.isoformat()
         }
 
+class ExportRequest(BaseModel):
+    type: ReportType  # Fixed: use type instead of export_type
+    format: ExportFormat
+    filters: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    include_charts: bool = Field(default=False)
+    
+    @validator('filters')
+    def validate_export_filters(cls, v):
+        if v is None:
+            return {}
+        return v
+
+
+class ExportResponse(BaseModel):
+    filename: str
+    content_type: str
+    file_size: int = Field(ge=0)
+    download_url: str
+    expires_at: datetime
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
