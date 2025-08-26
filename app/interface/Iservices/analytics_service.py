@@ -1,7 +1,8 @@
+# interface/Iservices/analytics_service.py
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from uuid import UUID
-from datetime import date
+from datetime import date, datetime
 from sqlalchemy.orm import Session
 from schemas.analytics import (
     AnalyticsScope, DashboardAnalytics, ReportRequest, ReportResponse,
@@ -12,92 +13,67 @@ from models.models import UserRole
 
 
 class IAnalyticsService(ABC):
-    
     @abstractmethod
-    def get_dashboard_analytics(self, db: Session, scope_data: AnalyticsScope,
-                               requesting_user_id: UUID, requesting_user_role: UserRole,
-                               requesting_user_team_id: Optional[UUID] = None) -> DashboardAnalytics:
-        """Get dashboard analytics with role-based access control."""
+    def get_dashboard_analytics(
+        self, db: Session, scope_data: AnalyticsScope,
+        requesting_user_id: UUID, requesting_user_role: UserRole,
+        requesting_user_team_id: Optional[UUID] = None
+    ) -> DashboardAnalytics:
         pass
-    
+
     @abstractmethod
-    def generate_report(self, db: Session, report_request: ReportRequest,
-                       requesting_user_id: UUID, requesting_user_role: UserRole,
-                       requesting_user_team_id: Optional[UUID] = None) -> ReportResponse:
-        """Generate analytics report with role-based filtering."""
+    def generate_report(
+        self, db: Session, report_request: ReportRequest,
+        requesting_user_id: UUID, requesting_user_role: UserRole,
+        requesting_user_team_id: Optional[UUID] = None
+    ) -> ReportResponse:
         pass
-    
+
     @abstractmethod
-    def export_analytics(self, db: Session, export_request: ExportRequest,
-                        requesting_user_id: UUID, requesting_user_role: UserRole,
-                        requesting_user_team_id: Optional[UUID] = None) -> ExportResponse:
-        """Export analytics data in various formats."""
+    def export_analytics(
+        self, db: Session, export_request: ExportRequest,
+        requesting_user_id: UUID, requesting_user_role: UserRole,
+        requesting_user_team_id: Optional[UUID] = None
+    ) -> ExportResponse:
         pass
-    
+
     @abstractmethod
-    def get_bid_performance_report(self, db: Session, team_id: Optional[UUID] = None,
-                                  date_from: Optional[date] = None, date_to: Optional[date] = None,
-                                  requesting_user_role: UserRole = None,
-                                  requesting_user_team_id: Optional[UUID] = None) -> BidPerformanceReport:
-        """Generate detailed bid performance report."""
+    def get_bid_performance_report(
+        self, db: Session, team_id: Optional[UUID] = None,
+        date_from: Optional[date] = None, date_to: Optional[date] = None,
+        requesting_user_role: UserRole = None,
+        requesting_user_team_id: Optional[UUID] = None
+    ) -> BidPerformanceReport:
         pass
-    
+
     @abstractmethod
-    def get_financial_report(self, db: Session, team_id: Optional[UUID] = None,
-                            date_from: Optional[date] = None, date_to: Optional[date] = None,
-                            requesting_user_role: UserRole = None,
-                            requesting_user_team_id: Optional[UUID] = None) -> FinancialReport:
-        """Generate financial report with revenue, costs, and profitability."""
+    def get_financial_report(
+        self, db: Session, team_id: Optional[UUID] = None,
+        date_from: Optional[date] = None, date_to: Optional[date] = None,
+        requesting_user_role: UserRole = None,
+        requesting_user_team_id: Optional[UUID] = None
+    ) -> FinancialReport:
         pass
-    
+
     @abstractmethod
-    def get_operational_report(self, db: Session, team_id: Optional[UUID] = None,
-                              date_from: Optional[date] = None, date_to: Optional[date] = None,
-                              requesting_user_role: UserRole = None,
-                              requesting_user_team_id: Optional[UUID] = None) -> OperationalReport:
-        """Generate operational efficiency report."""
+    def get_operational_report(
+        self, db: Session, team_id: Optional[UUID] = None,
+        date_from: Optional[date] = None, date_to: Optional[date] = None,
+        requesting_user_role: UserRole = None,
+        requesting_user_team_id: Optional[UUID] = None
+    ) -> OperationalReport:
         pass
-    
+
     @abstractmethod
-    def validate_analytics_access(self, scope: str, requesting_user_role: UserRole,
-                                 requested_team_id: Optional[UUID] = None,
-                                 requested_user_id: Optional[UUID] = None,
-                                 requesting_user_team_id: Optional[UUID] = None,
-                                 requesting_user_id: Optional[UUID] = None) -> bool:
-        """Validate if user has access to requested analytics scope."""
+    def get_performance_insights(
+        self, db: Session, team_id: Optional[UUID] = None,
+        user_id: Optional[UUID] = None, requesting_user_role: UserRole = None
+    ) -> Dict[str, Any]:
         pass
-    
+
     @abstractmethod
-    def get_performance_insights(self, db: Session, team_id: Optional[UUID] = None,
-                                user_id: Optional[UUID] = None,
-                                requesting_user_role: UserRole = None) -> Dict[str, Any]:
-        """Get AI-powered performance insights and recommendations."""
-        pass
-    
-    @abstractmethod
-    def get_predictive_analytics(self, db: Session, team_id: Optional[UUID] = None,
-                                user_id: Optional[UUID] = None,
-                                requesting_user_role: UserRole = None) -> Dict[str, Any]:
-        """Get predictive analytics for future performance."""
-        pass
-    
-    @abstractmethod
-    def get_competitive_analysis(self, db: Session, vertical_id: Optional[UUID] = None,
-                                requesting_user_role: UserRole = None) -> Dict[str, Any]:
-        """Get competitive analysis data."""
-        pass
-    
-    @abstractmethod
-    def cache_analytics_results(self, key: str, data: Dict[str, Any], ttl_minutes: int = 15) -> None:
-        """Cache analytics results for performance."""
-        pass
-    
-    @abstractmethod
-    def get_cached_analytics(self, key: str) -> Optional[Dict[str, Any]]:
-        """Get cached analytics data."""
-        pass
-    
-    @abstractmethod
-    def generate_analytics_cache_key(self, scope: str, params: Dict[str, Any]) -> str:
-        """Generate cache key for analytics data."""
+    def get_predictive_analytics(
+        self, db: Session, team_id: Optional[UUID] = None,
+        user_id: Optional[UUID] = None, requesting_user_role: UserRole = None
+    ) -> Dict[str, Any]:
         pass

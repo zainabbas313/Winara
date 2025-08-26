@@ -85,7 +85,24 @@ class SecurityEventType(str, enum.Enum):
     SUSPICIOUS_ACTIVITY = "suspicious_activity"
     UNAUTHORIZED_ACCESS = "unauthorized_access"
 
+class ReportType(str, enum.Enum):
+    BID_PERFORMANCE = "bid_performance"
+    FINANCIAL = "financial"
+    OPERATIONAL = "operational"
 
+
+class ExportFormat(str, enum.Enum):
+    JSON = "json"
+    CSV = "csv" 
+    XLSX = "xlsx"
+    PDF = "pdf"
+
+class InsightType(str, enum.Enum):
+    POSITIVE_TREND = "positive_trend"
+    NEGATIVE_TREND = "negative_trend"
+    OPPORTUNITY = "opportunity"
+    RISK = "risk"
+    ALERT = "alert"
 # ==========================
 # MODELS
 # ==========================

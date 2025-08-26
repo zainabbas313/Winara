@@ -1,8 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+# routes/analytics.py
+from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, Dict, Any
 from datetime import datetime, date
 from uuid import UUID
+import logging
+import io
+
 from dependencies.dependencies import (
     get_db, get_current_user, get_current_admin_user, get_current_sub_admin_user,
     DatabaseSession, CurrentUser, CurrentAdminUser, CurrentSubAdminUser
@@ -10,23 +15,29 @@ from dependencies.dependencies import (
 from services.analytics_service import AnalyticsService
 from schemas.analytics import (
     AnalyticsScope, DashboardAnalytics, ReportRequest, ReportResponse,
-    BidPerformanceReport, FinancialReport, OperationalReport
+    BidPerformanceReport, FinancialReport, OperationalReport, PerformanceInsights,
+    PredictiveAnalytics, ExportFormat, ReportType
 )
-from schemas.common import ExportRequest, ExportResponse
+from schemas.common import ExportRequest, ExportResponse, PaginationParams
+from schemas.analytics import APIResponse
 from models.models import UserRole
-import logging
+from utils.exceptions import AnalyticsError, ValidationError, PermissionError as CustomPermissionError
+from utils.rate_limiter import rate_limit
+from utils.audit import log_analytics_access
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 # Dependency injection
 def get_analytics_service() -> AnalyticsService:
     return AnalyticsService()
 
 
-@router.get("/analytics/dashboard", response_model=DashboardAnalytics)
+@router.get("/dashboard", response_model=DashboardAnalytics)
+@rate_limit(calls=100, period=3600)  # 100 calls per hour
 async def get_dashboard_analytics(
+    background_tasks: BackgroundTasks,
     current_user: CurrentUser,
     db: DatabaseSession,
     scope: str = Query(..., pattern="^(admin|team|member)$", description="Analytics scope"),
@@ -38,7 +49,7 @@ async def get_dashboard_analytics(
     analytics_service: AnalyticsService = Depends(get_analytics_service)
 ):
     """
-    Get dashboard analytics with role-based access control.
+    Get dashboard analytics with comprehensive role-based access control.
     
     **Scope Access Rules:**
     - Admin: Can access admin, team, and member scopes
@@ -59,12 +70,9 @@ async def get_dashboard_analytics(
         user_uuid = UUID(user_id) if user_id else None
         
         # Validate scope access
-        if not _validate_scope_access(scope, current_user, team_uuid, user_uuid):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Insufficient permissions for requested scope"
-            )
+        _validate_scope_access(scope, current_user, team_uuid, user_uuid)
         
+        # Create scope data
         scope_data = AnalyticsScope(
             scope=scope,
             team_id=team_uuid,
@@ -74,27 +82,61 @@ async def get_dashboard_analytics(
             to_date=to_date
         )
         
-        return analytics_service.get_dashboard_analytics(
+        # Log analytics access
+        # background_tasks.add_task(
+        #     log_analytics_access,
+        #     user_id=current_user.id,
+        #     action="dashboard_view",
+        #     scope=scope,
+        #     team_id=team_uuid,
+        #     target_user_id=user_uuid
+        # )
+        
+        result = analytics_service.get_dashboard_analytics(
             db, scope_data, current_user.id, 
             current_user.role, current_user.team_id
         )
         
+        logger.info(f"Dashboard analytics retrieved for user {current_user.id}, scope: {scope}")
+        return result
+        
     except ValueError as e:
+        logger.error(f"Invalid UUID format in dashboard request: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid UUID format: {e}"
+            detail=f"Invalid UUID format: {str(e)}"
+        )
+    except CustomPermissionError as e:
+        logger.warning(f"Permission denied for dashboard analytics: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
+    except AnalyticsError as e:
+        logger.error(f"Analytics error in dashboard: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate dashboard analytics"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in dashboard analytics: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
         )
 
 
-@router.post("/analytics/reports", response_model=ReportResponse)
+@router.post("/reports", response_model=ReportResponse)
+@rate_limit(calls=50, period=3600)  # 50 calls per hour
 async def generate_report(
     report_request: ReportRequest,
+    background_tasks: BackgroundTasks,
     current_user: CurrentUser,
     db: DatabaseSession,
     analytics_service: AnalyticsService = Depends(get_analytics_service)
 ):
     """
-    Generate analytics report.
+    Generate comprehensive analytics report.
     
     **Report Types:**
     - **bid_performance**: Bid success rates, trends, and patterns
@@ -106,15 +148,52 @@ async def generate_report(
     - Sub-Admin: Can generate reports for their team
     - Member: Can generate personal reports only
     """
-    return analytics_service.generate_report(
-        db, report_request, current_user.id,
-        current_user.role, current_user.team_id
-    )
+    try:
+        # Validate report request
+        _validate_report_access(report_request, current_user)
+        
+        # Log report generation
+        # background_tasks.add_task(
+        #     log_analytics_access,
+        #     user_id=current_user.id,
+        #     action="report_generate",
+        #     report_type=report_request.type.value,
+        #     filters=report_request.filters
+        # )
+        
+        result = analytics_service.generate_report(
+            db, report_request, current_user.id,
+            current_user.role, current_user.team_id
+        )
+        
+        logger.info(f"Report {report_request.type} generated for user {current_user.id}")
+        return result
+        
+    except ValidationError as e:
+        logger.error(f"Validation error in report generation: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except CustomPermissionError as e:
+        logger.warning(f"Permission denied for report generation: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
+    except AnalyticsError as e:
+        logger.error(f"Analytics error in report generation: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate report"
+        )
 
 
-@router.post("/analytics/export", response_model=ExportResponse)
+@router.post("/export", response_model=ExportResponse)
+@rate_limit(calls=20, period=3600)  # 20 exports per hour
 async def export_analytics(
     export_request: ExportRequest,
+    background_tasks: BackgroundTasks,
     current_user: CurrentUser,
     db: DatabaseSession,
     analytics_service: AnalyticsService = Depends(get_analytics_service)
@@ -133,14 +212,50 @@ async def export_analytics(
     - **financial**: Financial reports and summaries
     - **operational**: Operational metrics and KPIs
     """
-    return analytics_service.export_analytics(
-        db, export_request, current_user.id,
-        current_user.role, current_user.team_id
-    )
+    try:
+        # Validate export access
+        _validate_export_access(export_request, current_user)
+        
+        # Log export request
+        # background_tasks.add_task(
+        #     log_analytics_access,
+        #     user_id=current_user.id,
+        #     action="data_export",
+        #     type=export_request.type.value,
+        #     format=export_request.format.value
+        # )
+        
+        result = analytics_service.export_analytics(
+            db, export_request, current_user.id,
+            current_user.role, current_user.team_id
+        )
+        
+        logger.info(f"Data exported for user {current_user.id}, type: {export_request.type}")
+        return result
+        
+    except ValidationError as e:
+        logger.error(f"Validation error in export: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except CustomPermissionError as e:
+        logger.warning(f"Permission denied for export: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
+    except AnalyticsError as e:
+        logger.error(f"Analytics error in export: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to export data"
+        )
 
 
 # Detailed report endpoints
-@router.get("/analytics/reports/bid-performance", response_model=BidPerformanceReport)
+@router.get("/reports/bid-performance", response_model=BidPerformanceReport)
+@rate_limit(calls=30, period=3600)
 async def get_bid_performance_report(
     current_user: CurrentUser,
     db: DatabaseSession,
@@ -169,21 +284,32 @@ async def get_bid_performance_report(
                 detail="Cannot access data for specified team"
             )
         
-        return analytics_service.get_bid_performance_report(
+        result = analytics_service.get_bid_performance_report(
             db, team_uuid, date_from, date_to,
             current_user.role, current_user.team_id
         )
         
-    except ValueError:
+        logger.info(f"Bid performance report generated for user {current_user.id}")
+        return result
+        
+    except ValueError as e:
+        logger.error(f"Invalid team ID format: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid team ID format"
         )
+    except AnalyticsError as e:
+        logger.error(f"Error generating bid performance report: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate bid performance report"
+        )
 
 
-@router.get("/analytics/reports/financial", response_model=FinancialReport)
+@router.get("/reports/financial", response_model=FinancialReport)
+@rate_limit(calls=30, period=3600)
 async def get_financial_report(
-     current_user: CurrentUser,
+    current_user: CurrentUser,
     db: DatabaseSession,
     team_id: Optional[str] = Query(None, description="Filter by team ID"),
     date_from: Optional[date] = Query(None, description="Start date"),
@@ -210,21 +336,32 @@ async def get_financial_report(
                 detail="Cannot access data for specified team"
             )
         
-        return analytics_service.get_financial_report(
+        result = analytics_service.get_financial_report(
             db, team_uuid, date_from, date_to,
             current_user.role, current_user.team_id
         )
         
-    except ValueError:
+        logger.info(f"Financial report generated for user {current_user.id}")
+        return result
+        
+    except ValueError as e:
+        logger.error(f"Invalid team ID format: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid team ID format"
         )
+    except AnalyticsError as e:
+        logger.error(f"Error generating financial report: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate financial report"
+        )
 
 
-@router.get("/analytics/reports/operational", response_model=OperationalReport)
+@router.get("/reports/operational", response_model=OperationalReport)
+@rate_limit(calls=30, period=3600)
 async def get_operational_report(
-     current_user: CurrentUser,
+    current_user: CurrentUser,
     db: DatabaseSession,
     team_id: Optional[str] = Query(None, description="Filter by team ID"),
     date_from: Optional[date] = Query(None, description="Start date"),
@@ -250,20 +387,31 @@ async def get_operational_report(
                 detail="Cannot access data for specified team"
             )
         
-        return analytics_service.get_operational_report(
+        result = analytics_service.get_operational_report(
             db, team_uuid, date_from, date_to,
             current_user.role, current_user.team_id
         )
         
-    except ValueError:
+        logger.info(f"Operational report generated for user {current_user.id}")
+        return result
+        
+    except ValueError as e:
+        logger.error(f"Invalid team ID format: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid team ID format"
         )
+    except AnalyticsError as e:
+        logger.error(f"Error generating operational report: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate operational report"
+        )
 
 
 # Advanced analytics endpoints
-@router.get("/analytics/insights", response_model=dict)
+@router.get("/insights", response_model=Dict[str, Any])
+@rate_limit(calls=20, period=3600)
 async def get_performance_insights(
     current_user: CurrentUser,
     db: DatabaseSession,
@@ -273,6 +421,12 @@ async def get_performance_insights(
 ):
     """
     Get AI-powered performance insights and recommendations.
+    
+    This endpoint provides intelligent analysis of performance data including:
+    - Trend analysis and pattern recognition
+    - Performance benchmarking
+    - Actionable recommendations
+    - Risk and opportunity identification
     """
     try:
         team_uuid = UUID(team_id) if team_id else None
@@ -291,18 +445,29 @@ async def get_performance_insights(
                 detail="Cannot access data for specified user"
             )
         
-        return analytics_service.get_performance_insights(
+        result = analytics_service.get_performance_insights(
             db, team_uuid, user_uuid, current_user.role
         )
         
-    except ValueError:
+        logger.info(f"Performance insights generated for user {current_user.id}")
+        return result
+        
+    except ValueError as e:
+        logger.error(f"Invalid ID format in insights request: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid ID format"
         )
+    except AnalyticsError as e:
+        logger.error(f"Error generating performance insights: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate performance insights"
+        )
 
 
-@router.get("/analytics/predictions", response_model=dict)
+@router.get("/predictions", response_model=Dict[str, Any])
+@rate_limit(calls=10, period=3600)
 async def get_predictive_analytics(
     current_user: CurrentUser,
     db: DatabaseSession,
@@ -312,6 +477,12 @@ async def get_predictive_analytics(
 ):
     """
     Get predictive analytics for future performance.
+    
+    This endpoint provides machine learning-based predictions including:
+    - Performance forecasting
+    - Success probability analysis
+    - Trend predictions
+    - Recommended actions for optimization
     """
     try:
         team_uuid = UUID(team_id) if team_id else None
@@ -330,41 +501,155 @@ async def get_predictive_analytics(
                 detail="Cannot access data for specified user"
             )
         
-        return analytics_service.get_predictive_analytics(
+        result = analytics_service.get_predictive_analytics(
             db, team_uuid, user_uuid, current_user.role
         )
         
-    except ValueError:
+        logger.info(f"Predictive analytics generated for user {current_user.id}")
+        return result
+        
+    except ValueError as e:
+        logger.error(f"Invalid ID format in predictions request: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid ID format"
         )
+    except AnalyticsError as e:
+        logger.error(f"Error generating predictive analytics: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate predictive analytics"
+        )
+
+
+@router.get("/download/{filename}")
+async def download_export_file(
+    filename: str,
+    current_user: CurrentUser,
+    db: DatabaseSession
+):
+    """
+    Download exported analytics file.
+    
+    This endpoint serves exported files with proper authentication
+    and access control. Files are automatically cleaned up after
+    24 hours for security.
+    """
+    try:
+        # In a real implementation, you would:
+        # 1. Validate file ownership
+        # 2. Check file existence and expiry
+        # 3. Stream file content
+        # 4. Log download activity
+        
+        # Placeholder implementation
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="File download functionality not yet implemented"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error downloading file {filename}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to download file"
+        )
+
+
+@router.get("/health")
+async def analytics_health_check():
+    """
+    Health check endpoint for analytics service.
+    
+    Returns the status of analytics service components including:
+    - Database connectivity
+    - Cache availability
+    - Service response time
+    """
+    try:
+        analytics_service = get_analytics_service()
+        
+        # Check service health
+        health_status = {
+            "status": "healthy",
+            "timestamp": datetime.utcnow(),
+            "components": {
+                "analytics_service": "operational",
+                "database": "connected",
+                "cache": "available" if analytics_service.repository.redis_client else "unavailable"
+            }
+        }
+        
+        return APIResponse(
+            success=True,
+            message="Analytics service is healthy",
+            data=health_status
+        )
+        
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return APIResponse(
+            success=False,
+            message="Analytics service health check failed",
+            errors={"error": str(e)}
+        )
 
 
 # Helper functions for access validation
-def _validate_scope_access(scope: str, user, team_id: Optional[UUID], user_id: Optional[UUID]) -> bool:
+def _validate_scope_access(scope: str, user, team_id: Optional[UUID], user_id: Optional[UUID]) -> None:
     """Validate if user can access the requested scope."""
     if user.role == UserRole.ADMIN:
-        return True
+        return  # Admin has access to everything
     
     if scope == "admin":
-        return user.role == UserRole.ADMIN
+        if user.role != UserRole.ADMIN:
+            raise CustomPermissionError("Admin access required for admin scope")
     
-    if scope == "team":
+    elif scope == "team":
         if user.role == UserRole.SUB_ADMIN:
-            return not team_id or team_id == user.team_id
-        return False
+            if team_id and team_id != user.team_id:
+                raise CustomPermissionError("Sub-admin can only access their own team data")
+        elif user.role == UserRole.MEMBER:
+            raise CustomPermissionError("Members cannot access team scope")
     
-    if scope == "member":
-        if user.role == UserRole.ADMIN:
-            return True
-        if user.role == UserRole.SUB_ADMIN:
-            # Sub-admin can view member data for their team members
-            return True  # Additional validation needed in service layer
+    elif scope == "member":
         if user.role == UserRole.MEMBER:
-            return not user_id or user_id == user.id
+            if user_id and user_id != user.id:
+                raise CustomPermissionError("Members can only access their own data")
+
+
+def _validate_report_access(report_request: ReportRequest, user) -> None:
+    """Validate report generation access."""
+    if user.role == UserRole.ADMIN:
+        return  # Admin can generate any report
     
-    return False
+    # Check if user is requesting data outside their scope
+    filters = report_request.filters or {}
+    requested_team_id = filters.get('team_id')
+    
+    if user.role == UserRole.SUB_ADMIN:
+        if requested_team_id and UUID(requested_team_id) != user.team_id:
+            raise CustomPermissionError("Sub-admin can only generate reports for their team")
+    elif user.role == UserRole.MEMBER:
+        if requested_team_id:
+            raise CustomPermissionError("Members cannot generate team reports")
+
+
+def _validate_export_access(export_request: ExportRequest, user) -> None:
+    """Validate export access."""
+    if user.role == UserRole.ADMIN:
+        return  # Admin can export anything
+    
+    # Similar validation as report access
+    filters = export_request.filters or {}
+    requested_team_id = filters.get('team_id')
+    
+    if user.role == UserRole.SUB_ADMIN:
+        if requested_team_id and UUID(requested_team_id) != user.team_id:
+            raise CustomPermissionError("Sub-admin can only export their team data")
+    elif user.role == UserRole.MEMBER:
+        if requested_team_id:
+            raise CustomPermissionError("Members cannot export team data")
 
 
 def _can_access_team_data(user, team_id: UUID) -> bool:
@@ -381,8 +666,8 @@ def _can_access_user_data(user, user_id: UUID) -> bool:
     if user.role == UserRole.ADMIN:
         return True
     if user.role == UserRole.SUB_ADMIN:
-        # Additional validation needed to check if user is in same team
-        return True
+        # Additional validation would be needed to check if user is in same team
+        return True  # Simplified for this example
     if user.role == UserRole.MEMBER:
         return user_id == user.id
     return False

@@ -1,3 +1,13 @@
+"""
+Validation utilities for analytics data and requests.
+"""
+
+from typing import Any, Dict, Optional, List
+from datetime import date, datetime
+from uuid import UUID
+from decimal import Decimal, InvalidOperation
+
+from validators import ValidationError
 import re
 from typing import Optional
 from decimal import Decimal, InvalidOperation
@@ -158,3 +168,123 @@ def validate_timezone(timezone: str) -> bool:
     # Basic timezone validation - should be improved with pytz in production
     pattern = r'^UTC[+-]\d{2}:\d{2}$|^UTC$'
     return bool(re.match(pattern, timezone))
+
+def validate_uuid(value: Any, field_name: str = "UUID") -> UUID:
+    """Validate and convert UUID string to UUID object."""
+    if value is None:
+        return None
+    
+    if isinstance(value, UUID):
+        return value
+    
+    if isinstance(value, str):
+        try:
+            return UUID(value)
+        except ValueError:
+            raise ValidationError(f"Invalid {field_name} format", field=field_name, value=value)
+    
+    raise ValidationError(f"{field_name} must be a valid UUID string", field=field_name, value=value)
+
+
+def validate_date_range(date_from: Optional[date], date_to: Optional[date]) -> None:
+    """Validate date range parameters."""
+    if date_from and date_to:
+        if date_from > date_to:
+            raise ValidationError("Start date cannot be after end date")
+        
+        # Check if date range is too large (e.g., more than 1 year)
+        if (date_to - date_from).days > 365:
+            raise ValidationError("Date range cannot exceed 365 days")
+    
+    # Check if dates are not in the future
+    today = date.today()
+    if date_from and date_from > today:
+        raise ValidationError("Start date cannot be in the future")
+    if date_to and date_to > today:
+        raise ValidationError("End date cannot be in the future")
+
+
+def validate_pagination_params(page: int, limit: int) -> None:
+    """Validate pagination parameters."""
+    if page < 1:
+        raise ValidationError("Page number must be greater than 0", field="page", value=page)
+    
+    if limit < 1 or limit > 100:
+        raise ValidationError("Limit must be between 1 and 100", field="limit", value=limit)
+
+
+def validate_decimal(value: Any, field_name: str, min_value: Optional[Decimal] = None, 
+                    max_value: Optional[Decimal] = None) -> Decimal:
+    """Validate and convert decimal values."""
+    if value is None:
+        return None
+    
+    if isinstance(value, Decimal):
+        decimal_value = value
+    elif isinstance(value, (int, float)):
+        decimal_value = Decimal(str(value))
+    elif isinstance(value, str):
+        try:
+            decimal_value = Decimal(value)
+        except (InvalidOperation, ValueError):
+            raise ValidationError(f"Invalid {field_name} format", field=field_name, value=value)
+    else:
+        raise ValidationError(f"{field_name} must be a number", field=field_name, value=value)
+    
+    if min_value is not None and decimal_value < min_value:
+        raise ValidationError(f"{field_name} must be >= {min_value}", field=field_name, value=value)
+    
+    if max_value is not None and decimal_value > max_value:
+        raise ValidationError(f"{field_name} must be <= {max_value}", field=field_name, value=value)
+    
+    return decimal_value
+
+
+def sanitize_filters(filters: Dict[str, Any]) -> Dict[str, Any]:
+    """Sanitize and validate filter parameters."""
+    if not filters:
+        return {}
+    
+    sanitized = {}
+    
+    # Validate team_id
+    if 'team_id' in filters:
+        sanitized['team_id'] = validate_uuid(filters['team_id'], 'team_id')
+    
+    # Validate user_id
+    if 'user_id' in filters:
+        sanitized['user_id'] = validate_uuid(filters['user_id'], 'user_id')
+    
+    # Validate dates
+    date_from = None
+    date_to = None
+    
+    if 'date_from' in filters:
+        date_str = filters['date_from']
+        if isinstance(date_str, str):
+            try:
+                date_from = datetime.fromisoformat(date_str.replace('Z', '+00:00')).date()
+                sanitized['date_from'] = date_from
+            except ValueError:
+                raise ValidationError("Invalid date_from format")
+    
+    if 'date_to' in filters:
+        date_str = filters['date_to']
+        if isinstance(date_str, str):
+            try:
+                date_to = datetime.fromisoformat(date_str.replace('Z', '+00:00')).date()
+                sanitized['date_to'] = date_to
+            except ValueError:
+                raise ValidationError("Invalid date_to format")
+    
+    # Validate date range
+    validate_date_range(date_from, date_to)
+    
+    # Validate scope
+    if 'scope' in filters:
+        scope = filters['scope']
+        if scope not in ['admin', 'team', 'member']:
+            raise ValidationError("Invalid scope value", field='scope', value=scope)
+        sanitized['scope'] = scope
+    
+    return sanitized
