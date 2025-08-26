@@ -27,7 +27,7 @@ from utils.audit import log_analytics_access
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/analytics", tags=["analytics"])
+router = APIRouter()
 
 # Dependency injection
 def get_analytics_service() -> AnalyticsService:

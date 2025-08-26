@@ -98,7 +98,7 @@ class TeamPerformance(BaseModel):
 
 class MemberPerformance(BaseModel):
     member_id: UUID
-    member_name: str = Field(min_length=1, max_length=200)
+    member_name: Optional[str] = None
     total_bids: int = Field(ge=0)
     wins: int = Field(ge=0)
     win_rate: Decimal = Field(ge=0, le=100)
@@ -192,15 +192,19 @@ class FinancialSummary(BaseModel):
 
 
 class CostSummary(BaseModel):
-    total_connects_cost: Decimal = Field(ge=0)
+    total_connects_cost: Decimal = Field(ge=0, alias="total_cost")  # alias keeps compatibility
     total_connects_used: int = Field(ge=0)
     avg_cost_per_bid: Decimal = Field(ge=0)
     cost_per_win: Decimal = Field(ge=0)
-    
+
+    # optional extras
+    regular_connects: Optional[int] = 0
+    boost_connects: Optional[int] = 0
+    total_bids: Optional[int] = 0
+
     class Config:
-        json_encoders = {
-            Decimal: lambda v: float(v)
-        }
+        populate_by_name = True  # allows aliasing
+        json_encoders = {Decimal: lambda v: float(v)}
 
 
 class ProfitSummary(BaseModel):
