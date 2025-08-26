@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status as http_status, Query, status
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from datetime import date
@@ -48,7 +48,6 @@ async def create_receivable(
         current_user.role, current_user.team_id
     )
 
-
 @router.get("/", response_model=PaginatedResponse[ReceivableResponse])
 async def get_receivables(
     current_user: CurrentUser,
@@ -73,9 +72,10 @@ async def get_receivables(
     """
     if current_user.role == UserRole.MEMBER:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=http_status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions"
         )
+
     
     # Validate team_id if provided
     team_uuid = None
@@ -84,7 +84,7 @@ async def get_receivables(
             team_uuid = UUID(team_id)
         except ValueError:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
+                status_code=http_status.HTTP_400_BAD_REQUEST,
                 detail="Invalid team ID format"
             )
     
@@ -100,7 +100,6 @@ async def get_receivables(
         db, filters, current_user.id, current_user.role, 
         skip, limit, sort, current_user.team_id
     )
-
 
 @router.get("/{receivable_id}", response_model=ReceivableResponse)
 async def get_receivable(
