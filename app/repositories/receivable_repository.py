@@ -51,6 +51,71 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
             logger.error(f"Error getting receivable by bid {bid_id}: {e}")
             return None
 
+    def _calculate_derived_fields(self, receivable: Receivable) -> Dict[str, Any]:
+        """Calculate derived fields for receivable."""
+        from datetime import date
+        
+        today = date.today()
+        expected_date = receivable.expected_payment_date
+        
+        # Calculate is_overdue
+        is_overdue = expected_date < today and receivable.status in [
+            ReceivableStatus.PENDING, ReceivableStatus.PARTIAL
+        ]
+        
+        # Calculate days_overdue (positive if overdue, 0 if not)
+        days_overdue = max(0, (today - expected_date).days) if expected_date < today else 0
+        
+        # Calculate days_until_due (positive if future, negative if past)
+        days_until_due = (expected_date - today).days
+        
+        # Calculate payment_delay (only if paid and we have actual payment date)
+        payment_delay = None
+        if (receivable.status == ReceivableStatus.PAID and 
+            receivable.actual_payment_date and 
+            receivable.expected_payment_date):
+            payment_delay = (receivable.actual_payment_date - receivable.expected_payment_date).days
+        
+        return {
+            "is_overdue": is_overdue,
+            "days_overdue": days_overdue,
+            "days_until_due": days_until_due,
+            "payment_delay": payment_delay
+        }
+
+    def _enrich_receivable_with_derived_fields(self, receivable: Receivable) -> Receivable:
+        """Add derived fields to receivable object."""
+        derived_data = self._calculate_derived_fields(receivable)
+        
+        # Add derived as a dynamic attribute
+        from types import SimpleNamespace
+        receivable.derived = SimpleNamespace(**derived_data)
+        
+        return receivable
+
+    def _enrich_receivables_with_derived_fields(self, receivables: List[Receivable]) -> List[Receivable]:
+        """Add derived fields to list of receivables."""
+        return [self._enrich_receivable_with_derived_fields(r) for r in receivables]
+
+    # Update these existing methods to include derived fields:
+
+    def get_by_id(self, db: Session, receivable_id: UUID) -> Optional[Receivable]:
+        """Get receivable by ID with related data."""
+        try:
+            receivable = db.query(Receivable).options(
+                joinedload(Receivable.bid),
+                joinedload(Receivable.team),
+                joinedload(Receivable.created_by)
+            ).filter(Receivable.id == receivable_id).first()
+            
+            if receivable:
+                receivable = self._enrich_receivable_with_derived_fields(receivable)
+            
+            return receivable
+        except Exception as e:
+            logger.error(f"Error getting receivable {receivable_id}: {e}")
+            return None
+
     def get_all(self, db: Session, filters: ReceivableListFilter, skip: int = 0, 
                 limit: int = 20, sort_by: str = "-created_at") -> PaginatedResponse:
         """Get all receivables with filters and pagination."""
@@ -72,6 +137,9 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
             # Apply pagination
             items = query.offset(skip).limit(limit).all()
             
+            # Enrich items with derived fields
+            items = self._enrich_receivables_with_derived_fields(items)
+            
             # Build next cursor if needed
             next_cursor = None
             if len(items) == limit and skip + limit < total_count:
@@ -89,7 +157,6 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
                 next_cursor=None, 
                 count=0
             )
-
     def get_by_team(self, db: Session, team_id: UUID, filters: ReceivableListFilter,
                    skip: int = 0, limit: int = 20) -> PaginatedResponse:
         """Get receivables by team with filters."""
