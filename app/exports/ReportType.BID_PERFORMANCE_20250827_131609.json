@@ -1,0 +1,118 @@
+{
+  "summary": {
+    "total_bids": 4,
+    "wins": 1,
+    "win_rate": "25.00",
+    "connect_spend": "9.3000",
+    "revenue": "2700.00",
+    "profit_margin": "99.65555555555555555555555556",
+    "total_connects": 62,
+    "avg_cost_per_bid": "2.3250",
+    "cost_per_win": "9.3000"
+  },
+  "team_breakdown": [
+    {
+      "team_id": "bf1c275a-98e3-493b-88e8-0a052d305472",
+      "team_name": "AI/ML",
+      "total_bids": 1,
+      "wins": 0,
+      "win_rate": 0.0,
+      "revenue": "0",
+      "connect_spend": "2.2500",
+      "active_members": 1,
+      "bids_per_member": 1.0
+    }
+  ],
+  "member_breakdown": [
+    {
+      "member_id": "d0d4db9f-17de-49e3-a8f7-1774785bb6a0",
+      "member_name": "Zain Abbas",
+      "email": "zain@winara.com",
+      "total_bids": 3,
+      "wins": 1,
+      "win_rate": 33.33333333333333,
+      "revenue": "2700.00",
+      "connect_spend": "7.0500",
+      "avg_bid_value": "2700.00",
+      "avg_connects_per_bid": 15.666666666666666,
+      "last_bid_date": "2025-08-22 06:58:25.890109+05:00"
+    },
+    {
+      "member_id": "623e622e-8c9d-4054-a9b2-fde3f72314dd",
+      "member_name": "",
+      "email": "john@winara.com",
+      "total_bids": 1,
+      "wins": 0,
+      "win_rate": 0.0,
+      "revenue": "0",
+      "connect_spend": "2.2500",
+      "avg_bid_value": "0",
+      "avg_connects_per_bid": 15.0,
+      "last_bid_date": "2025-08-22 09:53:35.456390+05:00"
+    }
+  ],
+  "vertical_breakdown": [
+    {
+      "vertical_id": "98fd1c2e-4878-4b9e-9e71-d7598b97efc5",
+      "name": "langchain",
+      "wins": 0,
+      "revenue": "0",
+      "bid_count": 3,
+      "win_rate": 0.0,
+      "total_cost": "2.5500",
+      "avg_connects_per_bid": 5.666666666666667
+    },
+    {
+      "vertical_id": "de30c158-5e28-48c9-8bd6-d7bc2a7503dc",
+      "name": "AL/ML",
+      "wins": 1,
+      "revenue": "2700.00",
+      "bid_count": 1,
+      "win_rate": 100.0,
+      "total_cost": "6.7500",
+      "avg_connects_per_bid": 45.0
+    }
+  ],
+  "trends": [
+    {
+      "date": "2025-08-22",
+      "bids": 4,
+      "wins": 1,
+      "declined": 0,
+      "win_rate": 25.0
+    }
+  ],
+  "status_distribution": {
+    "not_viewed": 3,
+    "won": 1
+  },
+  "monthly_comparison": {
+    "current_month": {
+      "total_bids": 4,
+      "wins": 1,
+      "win_rate": "25.00",
+      "connect_spend": "9.3000",
+      "revenue": "2700.00",
+      "profit_margin": "99.65555555555555555555555556",
+      "total_connects": 62,
+      "avg_cost_per_bid": "2.3250",
+      "cost_per_win": "9.3000"
+    },
+    "previous_month": {
+      "total_bids": 0,
+      "wins": 0,
+      "win_rate": "0",
+      "connect_spend": "0",
+      "revenue": "0",
+      "profit_margin": "0",
+      "total_connects": 0,
+      "avg_cost_per_bid": "0",
+      "cost_per_win": "0"
+    },
+    "growth_rates": {
+      "bids": 100.0,
+      "wins": 100.0,
+      "revenue": 100.0
+    }
+  }
+}

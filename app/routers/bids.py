@@ -503,7 +503,7 @@ async def get_monthly_trends(
         )
 
 
-@router.get("/dashboard-summary", response_model=DashboardSummary)
+@router.get("/bid-summary", response_model=DashboardSummary)
 async def get_dashboard_summary(
     current_user: CurrentUser,
     db: DatabaseSession,

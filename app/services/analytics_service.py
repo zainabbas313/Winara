@@ -43,6 +43,15 @@ class AnalyticsService(IAnalyticsService):
                                requesting_user_team_id: Optional[UUID] = None) -> DashboardAnalytics:
         """Get dashboard analytics with comprehensive validation and caching."""
         try:
+            logger.info(f"Getting dashboard analytics with scope: {scope_data.scope}")
+        
+            # If calling receivables internally, add validation
+            if scope_data.team_id:
+                logger.info(f"Team ID being passed: {scope_data.team_id}")
+                # Ensure it's a valid UUID before passing to receivables
+                if not isinstance(scope_data.team_id, UUID):
+                    raise ValueError(f"Team ID must be UUID, got: {type(scope_data.team_id)}")
+                    
             # Validate access permissions
             self._validate_analytics_access(
                 scope_data.scope, requesting_user_role,
