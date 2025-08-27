@@ -84,27 +84,27 @@ app.add_middleware(
 
 
 # Custom middleware for request logging and timing
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    """Log all requests with timing information."""
-    start_time = time.time()
+# @app.middleware("http")
+# async def log_requests(request: Request, call_next):
+#     """Log all requests with timing information."""
+#     start_time = time.time()
     
-    # Log request
-    logger.info(f"Request: {request.method} {request.url.path}")
+#     # Log request
+#     logger.info(f"Request: {request.method} {request.url.path}")
     
-    # Process request
-    response = await call_next(request)
+#     # Process request
+#     response = await call_next(request)
     
-    # Calculate duration
-    duration = (time.time() - start_time) * 1000
+#     # Calculate duration
+#     duration = (time.time() - start_time) * 1000
     
-    # Log response
-    logger.info(f"Response: {response.status_code} - {duration:.2f}ms")
+#     # Log response
+#     logger.info(f"Response: {response.status_code} - {duration:.2f}ms")
     
-    # Add timing header
-    response.headers["X-Process-Time"] = str(duration)
+#     # Add timing header
+#     response.headers["X-Process-Time"] = str(duration)
     
-    return response
+#     return response
 
 
 # Global exception handlers
@@ -178,6 +178,30 @@ async def general_exception_handler(request: Request, exc: Exception):
         }
     )
 
+
+
+@app.middleware("http")
+async def debug_middleware(request: Request, call_next):
+    logger.info(f"=== REQUEST DEBUG ===")
+    logger.info(f"Method: {request.method}")
+    logger.info(f"URL: {request.url}")
+    logger.info(f"Path: {request.url.path}")
+    logger.info(f"Query params: {dict(request.query_params)}")
+    
+    try:
+        response = await call_next(request)
+        logger.info(f"Response status: {response.status_code}")
+        return response
+    except HTTPException as e:
+        logger.error(f"HTTPException in route: {e.detail}")
+        logger.error(f"Status code: {e.status_code}")
+        raise
+    except Exception as e:
+        logger.error(f"Unhandled exception in route: {e}")
+        logger.error(f"Exception type: {type(e).__name__}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise
 
 # API routes
 app.include_router(auth.router, prefix=settings.API_V1_STR, tags=["Authentication"])

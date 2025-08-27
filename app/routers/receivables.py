@@ -70,6 +70,7 @@ async def get_receivables(
     - Sub-Admin: Can see receivables for their team
     - Member: Cannot access this endpoint
     """
+    print("hello")
     if current_user.role == UserRole.MEMBER:
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
@@ -101,46 +102,47 @@ async def get_receivables(
         skip, limit, sort, current_user.team_id
     )
 
-@router.get("/{receivable_id}", response_model=ReceivableResponse)
-async def get_receivable(
-    receivable_id: str,
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    receivable_service: ReceivableService = Depends(get_receivable_service)
-):
-    """
-    Get receivable by ID.
+# @router.get("/{receivable_id}", response_model=ReceivableResponse)
+# async def get_receivable(
+#     receivable_id: str,
+#     current_user: CurrentUser,
+#     db: DatabaseSession,
+#     receivable_service: ReceivableService = Depends(get_receivable_service)
+# ):
+#     """
+#     Get receivable by ID.
     
-    Access control:
-    - Admin: Can see any receivable
-    - Sub-Admin: Can see receivables for their team
-    - Member: Cannot access this endpoint
-    """
-    if current_user.role == UserRole.MEMBER:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions"
-        )
+#     Access control:
+#     - Admin: Can see any receivable
+#     - Sub-Admin: Can see receivables for their team
+#     - Member: Cannot access this endpoint
+#     """
+#     print("hello")
+#     if current_user.role == UserRole.MEMBER:
+#         raise HTTPException(
+#             status_code=status.HTTP_403_FORBIDDEN,
+#             detail="Insufficient permissions"
+#         )
     
-    try:
-        receivable_uuid = UUID(receivable_id)
-        receivable = receivable_service.get_receivable(
-            db, receivable_uuid, current_user.id,
-            current_user.role, current_user.team_id
-        )
+#     try:
+#         receivable_uuid = UUID(receivable_id)
+#         receivable = receivable_service.get_receivable(
+#             db, receivable_uuid, current_user.id,
+#             current_user.role, current_user.team_id
+#         )
         
-        if not receivable:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Receivable not found"
-            )
+#         if not receivable:
+#             raise HTTPException(
+#                 status_code=status.HTTP_404_NOT_FOUND,
+#                 detail="Receivable not found"
+#             )
         
-        return receivable
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid receivable ID format"
-        )
+#         return receivable
+#     except ValueError:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Invalid receivable ID format"
+#         )
 
 
 @router.put("/{receivable_id}", response_model=ReceivableResponse)
@@ -474,7 +476,7 @@ async def mark_overdue_receivables(
     return {"marked_overdue": count, "message": f"Marked {count} receivables as overdue"}
 
 
-@router.get("/dashboard/summary")
+@router.get("/receivables/summary")
 async def get_receivables_dashboard_summary(
     current_user: CurrentUser,
     db: DatabaseSession,

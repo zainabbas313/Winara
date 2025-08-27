@@ -108,9 +108,9 @@ async def get_team(
         )
     
     try:
-        team_uuid = UUID(team_id)
+        # team_uuid = UUID(team_id)
         team = team_service.get_team(
-            db, team_uuid, current_user.id, 
+            db, team_id, current_user.id, 
             current_user.role.value, current_user.team_id
         )
         
@@ -490,7 +490,7 @@ async def delete_team_goal(
 # Team statistics and performance
 @router.get("/teams/{team_id}/statistics", response_model=dict)
 async def get_team_statistics(
-    team_id: str,
+    team_id: UUID,
     current_user: CurrentUser,
     db: DatabaseSession,
     team_service: TeamService = Depends(get_team_service)
@@ -510,17 +510,17 @@ async def get_team_statistics(
         )
     
     try:
-        team_uuid = UUID(team_id)
+        # team_uuid = UUID(team_id)
         
         # Validate access
         if (current_user.role == UserRole.SUB_ADMIN and 
-            current_user.team_id != team_uuid):
+            current_user.team_id != team_id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Can only access your own team statistics"
             )
         
-        return team_service.get_team_statistics(db, team_uuid)
+        return team_service.get_team_statistics(db, team_id)
         
     except ValueError:
         raise HTTPException(

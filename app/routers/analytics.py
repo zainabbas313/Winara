@@ -1,7 +1,5 @@
 # routes/analytics.py
 from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
-from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any
 from datetime import datetime, date
 from uuid import UUID
@@ -9,21 +7,19 @@ import logging
 import io
 
 from dependencies.dependencies import (
-    get_db, get_current_user, get_current_admin_user, get_current_sub_admin_user,
-    DatabaseSession, CurrentUser, CurrentAdminUser, CurrentSubAdminUser
+    DatabaseSession, CurrentUser
 )
 from services.analytics_service import AnalyticsService
 from schemas.analytics import (
     AnalyticsScope, DashboardAnalytics, ReportRequest, ReportResponse,
-    BidPerformanceReport, FinancialReport, OperationalReport, PerformanceInsights,
-    PredictiveAnalytics, ExportFormat, ReportType
+    BidPerformanceReport, FinancialReport, OperationalReport
 )
 from schemas.common import ExportRequest, ExportResponse, PaginationParams
 from schemas.analytics import APIResponse
 from models.models import UserRole
 from utils.exceptions import AnalyticsError, ValidationError, PermissionError as CustomPermissionError
 from utils.rate_limiter import rate_limit
-from utils.audit import log_analytics_access
+# from utils.audit import log_analytics_access
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +33,6 @@ def get_analytics_service() -> AnalyticsService:
 @router.get("/dashboard", response_model=DashboardAnalytics)
 @rate_limit(calls=100, period=3600)  # 100 calls per hour
 async def get_dashboard_analytics(
-    background_tasks: BackgroundTasks,
     current_user: CurrentUser,
     db: DatabaseSession,
     scope: str = Query(..., pattern="^(admin|team|member)$", description="Analytics scope"),
