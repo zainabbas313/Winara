@@ -1,8 +1,8 @@
-"""initailize tables
+"""update
 
-Revision ID: 82c715396cdb
+Revision ID: 58938835f95c
 Revises: 
-Create Date: 2025-08-13 14:16:48.375986
+Create Date: 2025-08-28 16:09:46.594341
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '82c715396cdb'
+revision: str = '58938835f95c'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -43,8 +43,8 @@ def upgrade() -> None:
     sa.Column('email', sa.String(length=255), nullable=False),
     sa.Column('username', sa.String(length=50), nullable=False),
     sa.Column('hashed_password', sa.String(length=255), nullable=False),
-    sa.Column('first_name', sa.String(length=100), nullable=False),
-    sa.Column('last_name', sa.String(length=100), nullable=False),
+    sa.Column('first_name', sa.String(length=100), nullable=True),
+    sa.Column('last_name', sa.String(length=100), nullable=True),
     sa.Column('phone', sa.String(length=20), nullable=True),
     sa.Column('bio', sa.Text(), nullable=True),
     sa.Column('linkedin_profile_url', sa.String(length=500), nullable=True),
@@ -181,8 +181,8 @@ def upgrade() -> None:
     sa.Column('job_description', sa.Text(), nullable=True),
     sa.Column('client_name', sa.String(length=200), nullable=True),
     sa.Column('vertical_id', sa.UUID(), nullable=False),
-    sa.Column('member_id', sa.UUID(), nullable=False),
-    sa.Column('team_id', sa.UUID(), nullable=False),
+    sa.Column('member_id', sa.UUID(), nullable=True),
+    sa.Column('team_id', sa.UUID(), nullable=True),
     sa.Column('budget_type', sa.Enum('FIXED', 'HOURLY', name='budgettype'), nullable=False),
     sa.Column('budget_min', sa.DECIMAL(precision=12, scale=2), nullable=True),
     sa.Column('budget_max', sa.DECIMAL(precision=12, scale=2), nullable=True),

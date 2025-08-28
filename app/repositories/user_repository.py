@@ -161,7 +161,7 @@ class UserRepository(BaseRepository[User], IUserRepository):
             return []
 
     # Session management
-    def create_session(self, db: Session, user_id: UUID, refresh_token: str, 
+    def create_session(self, db: Session, user_id: UUID,
                       device_info: DeviceInfo, expires_at: datetime) -> UserSession:
         """Create user session."""
         try:
@@ -169,7 +169,6 @@ class UserRepository(BaseRepository[User], IUserRepository):
             
             session = UserSession(
                 user_id=user_id,
-                refresh_token=refresh_token,
                 status=SessionStatus.ACTIVE,
                 ip_address=device_info.ip_address,
                 user_agent=device_info.user_agent,
@@ -189,12 +188,12 @@ class UserRepository(BaseRepository[User], IUserRepository):
             db.rollback()
             raise
 
-    def get_session_by_token(self, db: Session, refresh_token: str) -> Optional[UserSession]:
+    def get_session_by_user_id(self, db: Session, user_id: str) -> Optional[UserSession]:
         """Get session by refresh token."""
         try:
             return db.query(UserSession).filter(
                 and_(
-                    UserSession.refresh_token == refresh_token,
+                    UserSession.user_id == user_id,
                     UserSession.status == SessionStatus.ACTIVE,
                     UserSession.expires_at > datetime.utcnow()
                 )
