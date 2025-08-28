@@ -1,3 +1,4 @@
+from repositories.audit_repository import AuditRepository
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -5,7 +6,7 @@ from typing import Optional, Annotated
 from database.database import get_db
 from utils.auth import verify_token
 from schemas.auth import TokenData
-from models.models import User, UserRole
+from models.models import SessionStatus, User, UserRole
 from repositories.user_repository import UserRepository
 from services.auth_service import AuthService
 
@@ -17,6 +18,9 @@ def get_user_repository() -> UserRepository:
 
 def get_auth_service() -> AuthService:
     return AuthService()
+
+def get_auth_repository() -> AuditRepository:
+    return AuditRepository()
 
 # Authentication dependencies
 async def get_current_user_token(
@@ -39,11 +43,12 @@ async def get_current_user_token(
 async def get_current_user(
     db: Session = Depends(get_db),
     token_data: TokenData = Depends(get_current_user_token),
-    user_repo: UserRepository = Depends(get_user_repository)
+    user_repo: UserRepository = Depends(get_user_repository),
+    auth_repo: AuditRepository = Depends(get_auth_repository)
 ) -> User:
     """Get current user from token."""
     user = user_repo.get_by_id(db, token_data.user_id)
-    
+    user_auth = auth_repo.get_user_session_by_ids(db, user.id, token_data.session_id)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -60,6 +65,12 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User account is locked",
+        )
+    
+    if user_auth.status == SessionStatus.INVALIDATED:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session Expired",
         )
     
     return user

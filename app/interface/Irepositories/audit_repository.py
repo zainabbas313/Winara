@@ -3,11 +3,16 @@ from typing import Optional, List, Dict, Any
 from uuid import UUID
 from datetime import datetime
 from sqlalchemy.orm import Session
-from models.models import AuditLog, SecurityEvent, AuditAction, SecurityEventType
+from models.models import AuditLog, SecurityEvent, AuditAction, SecurityEventType, UserSession
 from schemas.common import PaginatedResponse
 
 
 class IAuditRepository(ABC):
+
+    @abstractmethod
+    def get_user_session_by_ids(self, db: Session, user_id: UUID, session_id: UUID) -> Optional[UserSession]:
+        """Get complete user session by user ID and session ID."""
+        pass
     
     @abstractmethod
     def create_audit_log(self, db: Session, action: AuditAction, entity_type: str,

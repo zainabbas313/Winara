@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func, desc
 from .base_repository import BaseRepository
-from models.models import AuditLog, SecurityEvent, AuditAction, SecurityEventType, User
+from models.models import AuditLog, SecurityEvent, AuditAction, SecurityEventType, User, UserSession
 from schemas.common import PaginatedResponse
 from interface.Irepositories.audit_repository import IAuditRepository
 import logging
@@ -15,6 +15,23 @@ logger = logging.getLogger(__name__)
 class AuditRepository(BaseRepository[AuditLog], IAuditRepository):
     def __init__(self):
         super().__init__(AuditLog)
+
+    def get_user_session_by_ids(self, db: Session, user_id: UUID, session_id: UUID) -> Optional[UserSession]:
+        """Get complete user session by user ID and session ID with user relationship loaded."""
+        try:
+            session = db.query(UserSession).options(
+                joinedload(UserSession.user)  # Eagerly load the related user
+            ).filter(
+                and_(
+                    UserSession.id == session_id,
+                    UserSession.user_id == user_id
+                )
+            ).first()
+            
+            return session
+        except Exception as e:
+            logger.error(f"Error getting user session for user {user_id}, session {session_id}: {e}")
+            return None
 
     def create_audit_log(self, db: Session, action: AuditAction, entity_type: str,
                         entity_id: Optional[UUID], user_id: Optional[UUID],

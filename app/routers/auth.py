@@ -68,7 +68,6 @@ async def refresh_token(
 
 @router.post("/auth/logout", response_model=SuccessResponse)
 async def logout(
-    logout_data: LogoutRequest,
     current_user: CurrentUser,
     db: DatabaseSession,
     auth_service: AuthService = Depends(get_auth_service)
@@ -78,19 +77,19 @@ async def logout(
     
     - **session_id**: Session ID to invalidate
     """
-    return auth_service.logout(db, logout_data, current_user.id)
+    return auth_service.logout(db, current_user.id)
 
 
-@router.post("/auth/logout-all", response_model=SuccessResponse)
-async def logout_all_sessions(
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    auth_service: AuthService = Depends(get_auth_service)
-):
-    """
-    Logout user from all sessions.
-    """
-    return auth_service.logout_all_sessions(db, current_user.id)
+# @router.post("/auth/logout-all", response_model=SuccessResponse)
+# async def logout_all_sessions(
+#     current_user: CurrentUser,
+#     db: DatabaseSession,
+#     auth_service: AuthService = Depends(get_auth_service)
+# ):
+#     """
+#     Logout user from all sessions.
+#     """
+#     return auth_service.logout_all_sessions(db, current_user.id)
 
 
 @router.post("/auth/forgot-password", response_model=SuccessResponse)

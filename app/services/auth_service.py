@@ -32,11 +32,12 @@ class AuthService(IAuthService):
         self.user_repo = UserRepository()
         self.audit_repo = AuditRepository()
 
-    def login(self, db: Session, login_data: LoginRequest, device_data: DeviceInfo) -> DeviceInfo:
+    def login(self, db: Session, login_data: LoginRequest, device_data: DeviceInfo) -> LoginResponse:
         """Authenticate user and create session."""
         try:
             # Get user by email
             user = self.user_repo.get_by_email(db, login_data.email)
+            self.user_repo.invalidate_all_sessions(db, user.id)
             if not user:
                 # Log failed login attempt
                 self.audit_repo.create_security_event(
@@ -86,21 +87,22 @@ class AuthService(IAuthService):
                 )
                 # Could implement additional security measures here
             
-            # Create tokens
+            # Create session first (without refresh token in DB)
+            expires_at = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+            session = self.user_repo.create_session(
+                db, user.id, device_data, expires_at
+            )
+            
+            # Create tokens with session_id included
             token_data = {
                 "sub": str(user.id),
                 "role": user.role.value,
-                "team_id": str(user.team_id) if user.team_id else None
+                "team_id": str(user.team_id) if user.team_id else None,
+                "session_id": str(session.id)
             }
             
             access_token = create_access_token(token_data)
             refresh_token = create_refresh_token(token_data)
-            
-            # Create session
-            expires_at = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-            session = self.user_repo.create_session(
-                db, user.id, refresh_token, device_data, expires_at
-            )
             
             # Update user's last login
             self.user_repo.update_last_login(db, user.id)
@@ -136,7 +138,6 @@ class AuthService(IAuthService):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Login failed"
             )
-
     def refresh_token(self, db: Session, refresh_data: RefreshTokenRequest) -> RefreshTokenResponse:
         """Refresh access token using refresh token."""
         try:
@@ -149,7 +150,7 @@ class AuthService(IAuthService):
                 )
             
             # Get session by refresh token
-            session = self.user_repo.get_session_by_token(db, refresh_data.refresh_token)
+            session = self.user_repo.get_session_by_user_id(db, token_data.user_id)
             if not session:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -199,18 +200,19 @@ class AuthService(IAuthService):
                 detail="Token refresh failed"
             )
 
-    def logout(self, db: Session, logout_data: LogoutRequest, current_user_id: UUID) -> SuccessResponse:
+    def logout(self, db: Session, current_user_id: UUID) -> SuccessResponse:
         """Logout user and invalidate session."""
         try:
             # Invalidate session
-            success = self.user_repo.invalidate_session(db, logout_data.session_id)
+            self.user_repo.invalidate_all_sessions(db, current_user_id)
+            # success = self.user_repo.invalidate_session(db, logout_data.session_id)
             
-            if success:
-                # Log logout
-                self.audit_repo.create_audit_log(
-                    db, AuditAction.LOGOUT, "user", current_user_id, current_user_id,
-                    logout_data.session_id, None, None, "User logged out", old_values={}, new_values={}
-                )
+            # if success:
+            #     # Log logout
+            #     self.audit_repo.create_audit_log(
+            #         db, AuditAction.LOGOUT, "user", current_user_id, current_user_id,
+            #         logout_data.session_id, None, None, "User logged out", old_values={}, new_values={}
+            #     )
             
             return SuccessResponse(message="Logged out successfully")
             
@@ -257,7 +259,7 @@ class AuthService(IAuthService):
                 # Log password reset request
                 self.audit_repo.create_security_event(
                     db, SecurityEventType.PASSWORD_RESET_INITIATED, 1, user.id, None,
-                    None, None, "Password reset requested"
+                    None, None, "Password reset requested", None
                 )
             
             # Always return success to prevent email enumeration
@@ -307,7 +309,7 @@ class AuthService(IAuthService):
             # Log password reset
             self.audit_repo.create_security_event(
                 db, SecurityEventType.PASSWORD_RESET_COMPLETED, 1, user.id, None,
-                None, None, "Password reset completed"
+                None, None, "Password reset completed", None
             )
             
             return SuccessResponse(message="Password reset successfully")
@@ -355,7 +357,7 @@ class AuthService(IAuthService):
             # Log password change
             self.audit_repo.create_security_event(
                 db, SecurityEventType.PASSWORD_CHANGED, 1, user.id, None,
-                None, None, "Password changed by user"
+                None, None, "Password changed by user", None
             )
             
             return SuccessResponse(message="Password changed successfully")
@@ -465,7 +467,7 @@ class AuthService(IAuthService):
                 # Log account lock
                 self.audit_repo.create_security_event(
                     db, SecurityEventType.ACCOUNT_LOCKED, 3, user_id, None,
-                    None, None, f"Account locked: {reason}"
+                    None, None, f"Account locked: {reason}", None
                 )
                 
         except Exception as e:
@@ -483,7 +485,7 @@ class AuthService(IAuthService):
                 # Log account unlock
                 self.audit_repo.create_security_event(
                     db, SecurityEventType.ACCOUNT_UNLOCKED, 1, user_id, None,
-                    None, None, "Account unlocked by administrator"
+                    None, None, "Account unlocked by administrator", None
                 )
                 
         except Exception as e:
