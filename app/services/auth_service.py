@@ -259,7 +259,7 @@ class AuthService(IAuthService):
                 # Log password reset request
                 self.audit_repo.create_security_event(
                     db, SecurityEventType.PASSWORD_RESET_INITIATED, 1, user.id, None,
-                    None, None, "Password reset requested", None, None
+                    None, None, "Password reset requested", None
                 )
             
             # Always return success to prevent email enumeration
@@ -309,7 +309,7 @@ class AuthService(IAuthService):
             # Log password reset
             self.audit_repo.create_security_event(
                 db, SecurityEventType.PASSWORD_RESET_COMPLETED, 1, user.id, None,
-                None, None, "Password reset completed", None, None
+                None, None, "Password reset completed", None
             )
             
             return SuccessResponse(message="Password reset successfully")
@@ -357,7 +357,7 @@ class AuthService(IAuthService):
             # Log password change
             self.audit_repo.create_security_event(
                 db, SecurityEventType.PASSWORD_CHANGED, 1, user.id, None,
-                None, None, "Password changed by user", None, None
+                None, None, "Password changed by user", None
             )
             
             return SuccessResponse(message="Password changed successfully")
@@ -467,7 +467,7 @@ class AuthService(IAuthService):
                 # Log account lock
                 self.audit_repo.create_security_event(
                     db, SecurityEventType.ACCOUNT_LOCKED, 3, user_id, None,
-                    None, None, f"Account locked: {reason}", None, None
+                    None, None, f"Account locked: {reason}", None
                 )
                 
         except Exception as e:
@@ -485,7 +485,7 @@ class AuthService(IAuthService):
                 # Log account unlock
                 self.audit_repo.create_security_event(
                     db, SecurityEventType.ACCOUNT_UNLOCKED, 1, user_id, None,
-                    None, None, "Account unlocked by administrator", None, None
+                    None, None, "Account unlocked by administrator", None
                 )
                 
         except Exception as e:
