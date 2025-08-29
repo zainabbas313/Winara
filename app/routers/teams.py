@@ -333,6 +333,7 @@ async def get_team_members(
             detail="Failed to retrieve team members"
         )
 # Team goals management
+
 @router.get("/teams/{team_id}/goals", response_model=List[TeamGoalResponse])
 async def get_team_goals(
     team_id: str,
