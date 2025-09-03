@@ -18,7 +18,10 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
 
-
+    @validator("email", pre=True, always=True)
+    def normalize_email(cls, v: str) -> str:
+        return v.lower() if isinstance(v, str) else v
+    
 class TokenResponse(BaseModel):
     access_token: str
     expires_in: int
