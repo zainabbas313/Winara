@@ -291,7 +291,7 @@ class TeamService(ITeamService):
             user_repo = UserRepository()
             user = user_repo.get_by_id(db, user_data.user_id)
             
-            if user.role != UserRole.ADMIN:
+            if user.role == UserRole.ADMIN:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Add Admin User Denied"

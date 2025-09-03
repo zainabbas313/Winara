@@ -7,7 +7,7 @@ from models.models import UserStatus
 
 
 class TeamBase(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+    name: Optional[str] = Field(min_length=1, max_length=100)
     description: Optional[str] = None
     status: UserStatus = UserStatus.ACTIVE
 

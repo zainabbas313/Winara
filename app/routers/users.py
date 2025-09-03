@@ -434,33 +434,33 @@ async def get_vertical_user_assignment_details(
         )
 
 
-# Utility endpoints
-@router.get("/users/check-username/{username}", response_model=dict)
-async def check_username_availability(
-    username: str,
-    current_user: CurrentAdminUser,
-    db: DatabaseSession,
-    user_service: UserService = Depends(get_user_service)
-):
-    """
-    Check if username is available (Admin only).
-    """
-    available = user_service.check_username_availability(db, username)
-    return {"available": available, "username": username}
+# # Utility endpoints
+# @router.get("/users/check-username/{username}", response_model=dict)
+# async def check_username_availability(
+#     username: str,
+#     current_user: CurrentAdminUser,
+#     db: DatabaseSession,
+#     user_service: UserService = Depends(get_user_service)
+# ):
+#     """
+#     Check if username is available (Admin only).
+#     """
+#     available = user_service.check_username_availability(db, username)
+#     return {"available": available, "username": username}
 
 
-@router.get("/users/check-email/{email}", response_model=dict)
-async def check_email_availability(
-    email: str,
-    current_user: CurrentAdminUser,
-    db: DatabaseSession,
-    user_service: UserService = Depends(get_user_service)
-):
-    """
-    Check if email is available (Admin only).
-    """
-    available = user_service.check_email_availability(db, email)
-    return {"available": available, "email": email}
+# @router.get("/users/check-email/{email}", response_model=dict)
+# async def check_email_availability(
+#     email: str,
+#     current_user: CurrentAdminUser,
+#     db: DatabaseSession,
+#     user_service: UserService = Depends(get_user_service)
+# ):
+#     """
+#     Check if email is available (Admin only).
+#     """
+#     available = user_service.check_email_availability(db, email)
+#     return {"available": available, "email": email}
 
 
 @router.post("/users/{user_id}/activate", response_model=SuccessResponse)

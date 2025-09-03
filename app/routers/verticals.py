@@ -481,26 +481,26 @@ async def get_most_active_verticals(
         )
 
 
-@router.get("/analytics/summary", response_model=VerticalStats)
-async def get_verticals_summary_statistics(
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    vertical_service: VerticalService = Depends(get_vertical_service)
-):
-    """
-    Get summary statistics for all verticals.
+# @router.get("/analytics/summary", response_model=VerticalStats)
+# async def get_verticals_summary_statistics(
+#     current_user: CurrentUser,
+#     db: DatabaseSession,
+#     vertical_service: VerticalService = Depends(get_vertical_service)
+# ):
+#     """
+#     Get summary statistics for all verticals.
     
-    Returns aggregated metrics including total counts, earnings, 
-    success rates, and distribution by hierarchy level.
-    """
-    try:
-        return vertical_service.get_summary_statistics(db)
-    except Exception as e:
-        logger.error(f"Error in get_verticals_summary_statistics endpoint: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+#     Returns aggregated metrics including total counts, earnings, 
+#     success rates, and distribution by hierarchy level.
+#     """
+#     try:
+#         return vertical_service.get_summary_statistics(db)
+#     except Exception as e:
+#         logger.error(f"Error in get_verticals_summary_statistics endpoint: {str(e)}")
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail="Internal server error"
+#         )
 
 
 # ==========================================
@@ -608,43 +608,43 @@ async def update_vertical_statistics(
         )
 
 
-@router.post("/{vertical_id}/update-sort-order", response_model=SuccessResponse)
-async def update_vertical_sort_order(
-    vertical_id: str,
-    current_user: CurrentAdminUser,
-    db: DatabaseSession,
-    new_order: int = Query(..., ge=0, description="New sort order"),
-    vertical_service: VerticalService = Depends(get_vertical_service)
-):
-    """
-    Update vertical sort order (Admin only).
+# @router.post("/{vertical_id}/update-sort-order", response_model=SuccessResponse)
+# async def update_vertical_sort_order(
+#     vertical_id: str,
+#     current_user: CurrentAdminUser,
+#     db: DatabaseSession,
+#     new_order: int = Query(..., ge=0, description="New sort order"),
+#     vertical_service: VerticalService = Depends(get_vertical_service)
+# ):
+#     """
+#     Update vertical sort order (Admin only).
     
-    Changes the display order of a vertical within its hierarchy level.
-    """
-    try:
-        vertical_uuid = UUID(vertical_id)
-        success = vertical_service.update_sort_order(db, vertical_uuid, new_order)
+#     Changes the display order of a vertical within its hierarchy level.
+#     """
+#     try:
+#         vertical_uuid = UUID(vertical_id)
+#         success = vertical_service.update_sort_order(db, vertical_uuid, new_order)
         
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Vertical not found"
-            )
+#         if not success:
+#             raise HTTPException(
+#                 status_code=status.HTTP_404_NOT_FOUND,
+#                 detail="Vertical not found"
+#             )
         
-        return SuccessResponse(message="Sort order updated successfully")
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid vertical ID format"
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in update_vertical_sort_order endpoint: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+#         return SuccessResponse(message="Sort order updated successfully")
+#     except ValueError:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Invalid vertical ID format"
+#         )
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"Error in update_vertical_sort_order endpoint: {str(e)}")
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail="Internal server error"
+#         )
 
 
 # ==========================================

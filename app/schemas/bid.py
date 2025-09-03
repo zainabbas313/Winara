@@ -18,7 +18,7 @@ class BidBase(BaseModel):
     hourly_rate: Optional[Decimal] = Field(None, gt=0)
     estimated_hours: int = Field(default=0, ge=0)
     connects_used: int = Field(default=1, ge=1, le=50)
-    boost_connects_used: Optional[int] = Field(default=0, ge=0, le=50)
+    boost_connects_used: Optional[int] = Field(default=0, ge=0, le=50000)
     proposal_text: Optional[str] = None
     cover_letter: Optional[str] = None
     is_featured: Optional[bool] = False

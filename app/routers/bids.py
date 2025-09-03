@@ -30,38 +30,38 @@ def get_bid_service() -> BidService:
 # FIXED PATHS FIRST (so they don't conflict with dynamic ones)
 # =====================================================================
 
-@router.get("/teams/statistics", response_model=List[TeamBidStats])
-async def get_team_statistics(
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    team_id: Optional[str] = Query(None, description="Specific team ID (Admin only)"),
-    bid_service: BidService = Depends(get_bid_service)
-):
-    """Get team bid statistics (all or filtered by team_id)."""
-    if current_user.role == UserRole.MEMBER:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Members cannot access team statistics"
-        )
+# @router.get("/teams/statistics", response_model=List[TeamBidStats])
+# async def get_team_statistics(
+#     current_user: CurrentUser,
+#     db: DatabaseSession,
+#     team_id: Optional[str] = Query(None, description="Specific team ID (Admin only)"),
+#     bid_service: BidService = Depends(get_bid_service)
+# ):
+#     """Get team bid statistics (all or filtered by team_id)."""
+#     if current_user.role == UserRole.MEMBER:
+#         raise HTTPException(
+#             status_code=status.HTTP_403_FORBIDDEN,
+#             detail="Members cannot access team statistics"
+#         )
 
-    try:
-        team_uuid = UUID(team_id) if team_id else None
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid team ID format"
-        )
+#     try:
+#         team_uuid = UUID(team_id) if team_id else None
+#     except ValueError:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Invalid team ID format"
+#         )
 
-    try:
-        return bid_service.get_team_statistics(
-            db, team_uuid, current_user.role, current_user.team_id
-        )
-    except Exception as e:
-        logger.exception("Error fetching team statistics")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error fetching team statistics: {str(e)}"
-        )
+#     try:
+#         return bid_service.get_team_statistics(
+#             db, team_uuid, current_user.role, current_user.team_id
+#         )
+#     except Exception as e:
+#         logger.exception("Error fetching team statistics")
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail=f"Error fetching team statistics: {str(e)}"
+#         )
 
 
 @router.get("/bids/statistics", response_model=BidStats)
@@ -93,71 +93,71 @@ async def get_bid_statistics(
         )
 
 
-@router.get("/bids/enhanced", response_model=PaginatedResponse[BidResponse])
-async def get_bids_enhanced(
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    status_filter: Optional[BidStatus] = Query(None, alias="status", description="Filter by bid status"),
-    team_id: Optional[str] = Query(None, description="Filter by team ID"),
-    member_id: Optional[str] = Query(None, description="Filter by member ID"),
-    vertical_id: Optional[str] = Query(None, description="Filter by vertical ID"),
-    budget_type: Optional[BudgetType] = Query(None, description="Filter by budget type"),
-    date_from: Optional[datetime] = Query(None, description="Filter bids from this date"),
-    date_to: Optional[datetime] = Query(None, description="Filter bids until this date"),
-    q: Optional[str] = Query(None, description="Search query"),
-    min_connect_cost: Optional[float] = Query(None, description="Minimum connect cost"),
-    max_connect_cost: Optional[float] = Query(None, description="Maximum connect cost"),
-    competition_level: Optional[int] = Query(None, ge=1, le=10, description="Competition level"),
-    is_featured: Optional[bool] = Query(None, description="Filter by featured status"),
-    sort_field: Optional[BidSortField] = Query(None, description="Sort field"),
-    sort_direction: Optional[SortDirection] = Query(SortDirection.DESC, description="Sort direction"),
-    skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
-    bid_service: BidService = Depends(get_bid_service)
-):
-    """Get bids with enhanced filtering options."""
-    try:
-        filters = EnhancedBidFilter(
-            status=status_filter,
-            team_id=UUID(team_id) if team_id and team_id.strip() else None,
-            member_id=UUID(member_id) if member_id and member_id.strip() else None,
-            vertical_id=UUID(vertical_id) if vertical_id and vertical_id.strip() else None,
-            budget_type=budget_type,
-            date_from=date_from,
-            date_to=date_to,
-            q=q,
-            min_connect_cost=min_connect_cost,
-            max_connect_cost=max_connect_cost,
-            competition_level=competition_level,
-            is_featured=is_featured,
-            sort_field=sort_field,
-            sort_direction=sort_direction
-        )
+# @router.get("/bids/enhanced", response_model=PaginatedResponse[BidResponse])
+# async def get_bids_enhanced(
+#     current_user: CurrentUser,
+#     db: DatabaseSession,
+#     status_filter: Optional[BidStatus] = Query(None, alias="status", description="Filter by bid status"),
+#     team_id: Optional[str] = Query(None, description="Filter by team ID"),
+#     member_id: Optional[str] = Query(None, description="Filter by member ID"),
+#     vertical_id: Optional[str] = Query(None, description="Filter by vertical ID"),
+#     budget_type: Optional[BudgetType] = Query(None, description="Filter by budget type"),
+#     date_from: Optional[datetime] = Query(None, description="Filter bids from this date"),
+#     date_to: Optional[datetime] = Query(None, description="Filter bids until this date"),
+#     q: Optional[str] = Query(None, description="Search query"),
+#     min_connect_cost: Optional[float] = Query(None, description="Minimum connect cost"),
+#     max_connect_cost: Optional[float] = Query(None, description="Maximum connect cost"),
+#     competition_level: Optional[int] = Query(None, ge=1, le=10, description="Competition level"),
+#     is_featured: Optional[bool] = Query(None, description="Filter by featured status"),
+#     sort_field: Optional[BidSortField] = Query(None, description="Sort field"),
+#     sort_direction: Optional[SortDirection] = Query(SortDirection.DESC, description="Sort direction"),
+#     skip: int = Query(0, ge=0, description="Number of records to skip"),
+#     limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
+#     bid_service: BidService = Depends(get_bid_service)
+# ):
+#     """Get bids with enhanced filtering options."""
+#     try:
+#         filters = EnhancedBidFilter(
+#             status=status_filter,
+#             team_id=UUID(team_id) if team_id and team_id.strip() else None,
+#             member_id=UUID(member_id) if member_id and member_id.strip() else None,
+#             vertical_id=UUID(vertical_id) if vertical_id and vertical_id.strip() else None,
+#             budget_type=budget_type,
+#             date_from=date_from,
+#             date_to=date_to,
+#             q=q,
+#             min_connect_cost=min_connect_cost,
+#             max_connect_cost=max_connect_cost,
+#             competition_level=competition_level,
+#             is_featured=is_featured,
+#             sort_field=sort_field,
+#             sort_direction=sort_direction
+#         )
 
-        return bid_service.get_bids_enhanced(
-            db, filters, current_user.id, current_user.role,
-            skip, limit, current_user.team_id
-        )
+#         return bid_service.get_bids_enhanced(
+#             db, filters, current_user.id, current_user.role,
+#             skip, limit, current_user.team_id
+#         )
 
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid parameter: {str(e)}"
-        )
-    except SQLAlchemyError as e:
-        logger.error(f"Database error while fetching bids: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="A database error occurred while retrieving bids"
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception(f"Unexpected error in get_bids_enhanced: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred while processing the request"
-        )
+#     except ValueError as e:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail=f"Invalid parameter: {str(e)}"
+#         )
+#     except SQLAlchemyError as e:
+#         logger.error(f"Database error while fetching bids: {e}")
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail="A database error occurred while retrieving bids"
+#         )
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.exception(f"Unexpected error in get_bids_enhanced: {e}")
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail="An unexpected error occurred while processing the request"
+#         )
 
 
 @router.get("/bids/recent", response_model=List[BidResponse])
@@ -381,47 +381,47 @@ async def delete_bid(
 # ANALYTICS / DASHBOARD
 # =====================================================================
 
-@router.get("/members/rankings", response_model=PaginatedResponse[MemberBidRanking])
-async def get_member_rankings(
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    team_id: Optional[str] = Query(None, description="Filter by team ID"),
-    vertical_id: Optional[str] = Query(None, description="Filter by vertical ID"),
-    date_from: Optional[datetime] = Query(None, description="Filter from this date"),
-    date_to: Optional[datetime] = Query(None, description="Filter until this date"),
-    min_bids: Optional[int] = Query(None, ge=0, description="Minimum number of bids"),
-    sort_field: BidSortField = Query(BidSortField.WIN_RATE, description="Sort field"),
-    sort_direction: SortDirection = Query(SortDirection.DESC, description="Sort direction"),
-    skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
-    bid_service: BidService = Depends(get_bid_service)
-):
-    """Get member bid rankings/leaderboard."""
-    if current_user.role == UserRole.MEMBER:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Members cannot access member rankings"
-        )
+# @router.get("/members/rankings", response_model=PaginatedResponse[MemberBidRanking])
+# async def get_member_rankings(
+#     current_user: CurrentUser,
+#     db: DatabaseSession,
+#     team_id: Optional[str] = Query(None, description="Filter by team ID"),
+#     vertical_id: Optional[str] = Query(None, description="Filter by vertical ID"),
+#     date_from: Optional[datetime] = Query(None, description="Filter from this date"),
+#     date_to: Optional[datetime] = Query(None, description="Filter until this date"),
+#     min_bids: Optional[int] = Query(None, ge=0, description="Minimum number of bids"),
+#     sort_field: BidSortField = Query(BidSortField.WIN_RATE, description="Sort field"),
+#     sort_direction: SortDirection = Query(SortDirection.DESC, description="Sort direction"),
+#     skip: int = Query(0, ge=0, description="Number of records to skip"),
+#     limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
+#     bid_service: BidService = Depends(get_bid_service)
+# ):
+#     """Get member bid rankings/leaderboard."""
+#     if current_user.role == UserRole.MEMBER:
+#         raise HTTPException(
+#             status_code=status.HTTP_403_FORBIDDEN,
+#             detail="Members cannot access member rankings"
+#         )
     
-    try:
-        filters = MemberRankingFilter(
-            team_id=UUID(team_id) if team_id else None,
-            vertical_id=UUID(vertical_id) if vertical_id else None,
-            date_from=date_from,
-            date_to=date_to,
-            min_bids=min_bids,
-            sort_field=sort_field,
-            sort_direction=sort_direction
-        )
+#     try:
+#         filters = MemberRankingFilter(
+#             team_id=UUID(team_id) if team_id else None,
+#             vertical_id=UUID(vertical_id) if vertical_id else None,
+#             date_from=date_from,
+#             date_to=date_to,
+#             min_bids=min_bids,
+#             sort_field=sort_field,
+#             sort_direction=sort_direction
+#         )
         
-        return bid_service.get_member_rankings(
-            db, filters, current_user.role, current_user.team_id, skip, limit
-        )
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid UUID format"
-        )
+#         return bid_service.get_member_rankings(
+#             db, filters, current_user.role, current_user.team_id, skip, limit
+#         )
+#     except ValueError:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Invalid UUID format"
+#         )
 
 
 @router.get("/earnings", response_model=EarningsResponse)
@@ -589,106 +589,106 @@ async def bulk_delete_bids(
         )
 
 
-@router.patch("/bids/bulk-assign-team", response_model=BulkOperationResult)
-async def bulk_assign_team(
-    bid_ids: List[str],
-    target_team_id: str,
-    current_user: CurrentAdminUser,
-    db: DatabaseSession,
-    bid_service: BidService = Depends(get_bid_service)
-):
-    """Bulk assign bids to team (Admin only)."""
-    try:
-        bid_uuids = [UUID(bid_id) for bid_id in bid_ids]
-        target_team_uuid = UUID(target_team_id)
+# @router.patch("/bids/bulk-assign-team", response_model=BulkOperationResult)
+# async def bulk_assign_team(
+#     bid_ids: List[str],
+#     target_team_id: str,
+#     current_user: CurrentAdminUser,
+#     db: DatabaseSession,
+#     bid_service: BidService = Depends(get_bid_service)
+# ):
+#     """Bulk assign bids to team (Admin only)."""
+#     try:
+#         bid_uuids = [UUID(bid_id) for bid_id in bid_ids]
+#         target_team_uuid = UUID(target_team_id)
         
-        return bid_service.bulk_assign_team(
-            db, bid_uuids, target_team_uuid, current_user.id,
-            current_user.role, current_user.team_id
-        )
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid UUID format"
-        )
+#         return bid_service.bulk_assign_team(
+#             db, bid_uuids, target_team_uuid, current_user.id,
+#             current_user.role, current_user.team_id
+#         )
+#     except ValueError:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Invalid UUID format"
+#         )
 
 
-@router.post("/bids/bulk-operation", response_model=BulkOperationResult)
-async def execute_bulk_operation(
-    operation: BulkBidOperation,
-    current_user: CurrentSubAdminUser,
-    db: DatabaseSession,
-    bid_service: BidService = Depends(get_bid_service)
-):
-    """Execute bulk operations on bids (Sub-Admin and Admin only)."""
-    try:
-        if operation.operation == "update_status":
-            status = BidStatus(operation.data.get("status"))
-            bid_responses = bid_service.bulk_update_status(
-                db, operation.bid_ids, status, current_user.id,
-                current_user.role, current_user.team_id
-            )
-            return BulkOperationResult(
-                success_count=len(bid_responses),
-                failed_count=len(operation.bid_ids) - len(bid_responses),
-                total_count=len(operation.bid_ids)
-            )
-        elif operation.operation == "delete":
-            return bid_service.bulk_delete_bids(
-                db, operation.bid_ids, current_user.id,
-                current_user.role, current_user.team_id
-            )
-        elif operation.operation == "assign_team":
-            if current_user.role != UserRole.ADMIN:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Only admins can reassign teams"
-                )
-            target_team_id = UUID(operation.data.get("team_id"))
-            return bid_service.bulk_assign_team(
-                db, operation.bid_ids, target_team_id, current_user.id,
-                current_user.role, current_user.team_id
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid bulk operation"
-            )
-    except (ValueError, KeyError):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid operation data"
-        )
+# @router.post("/bids/bulk-operation", response_model=BulkOperationResult)
+# async def execute_bulk_operation(
+#     operation: BulkBidOperation,
+#     current_user: CurrentSubAdminUser,
+#     db: DatabaseSession,
+#     bid_service: BidService = Depends(get_bid_service)
+# ):
+#     """Execute bulk operations on bids (Sub-Admin and Admin only)."""
+#     try:
+#         if operation.operation == "update_status":
+#             status = BidStatus(operation.data.get("status"))
+#             bid_responses = bid_service.bulk_update_status(
+#                 db, operation.bid_ids, status, current_user.id,
+#                 current_user.role, current_user.team_id
+#             )
+#             return BulkOperationResult(
+#                 success_count=len(bid_responses),
+#                 failed_count=len(operation.bid_ids) - len(bid_responses),
+#                 total_count=len(operation.bid_ids)
+#             )
+#         elif operation.operation == "delete":
+#             return bid_service.bulk_delete_bids(
+#                 db, operation.bid_ids, current_user.id,
+#                 current_user.role, current_user.team_id
+#             )
+#         elif operation.operation == "assign_team":
+#             if current_user.role != UserRole.ADMIN:
+#                 raise HTTPException(
+#                     status_code=status.HTTP_403_FORBIDDEN,
+#                     detail="Only admins can reassign teams"
+#                 )
+#             target_team_id = UUID(operation.data.get("team_id"))
+#             return bid_service.bulk_assign_team(
+#                 db, operation.bid_ids, target_team_id, current_user.id,
+#                 current_user.role, current_user.team_id
+#             )
+#         else:
+#             raise HTTPException(
+#                 status_code=status.HTTP_400_BAD_REQUEST,
+#                 detail="Invalid bulk operation"
+#             )
+#     except (ValueError, KeyError):
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Invalid operation data"
+#         )
 
 
 # =====================================================================
 # CONVENIENCE ENDPOINTS
 # =====================================================================
 
-@router.get("/bids/{bid_id}/can-edit", response_model=dict)
-async def check_bid_edit_permission(
-    bid_id: str,
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    bid_service: BidService = Depends(get_bid_service)
-):
-    """Check if current user can edit the specified bid."""
-    try:
-        bid_uuid = UUID(bid_id)
-        return bid_service.check_bid_edit_permission(
-            db, bid_uuid, current_user.id, current_user.role
-        )
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid bid ID format"
-        )
+# @router.get("/bids/{bid_id}/can-edit", response_model=dict)
+# async def check_bid_edit_permission(
+#     bid_id: str,
+#     current_user: CurrentUser,
+#     db: DatabaseSession,
+#     bid_service: BidService = Depends(get_bid_service)
+# ):
+#     """Check if current user can edit the specified bid."""
+#     try:
+#         bid_uuid = UUID(bid_id)
+#         return bid_service.check_bid_edit_permission(
+#             db, bid_uuid, current_user.id, current_user.role
+#         )
+#     except ValueError:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Invalid bid ID format"
+#         )
 
 
 @router.post("/calculate-costs", response_model=dict)
 async def calculate_bid_costs(
-    connects_used: int = Query(..., ge=1, le=50, description="Number of connects to use"),
-    boost_connects: int = Query(0, ge=0, le=50, description="Number of boost connects to use"),
+    connects_used: int = Query(..., ge=1, le=500, description="Number of connects to use"),
+    boost_connects: int = Query(0, ge=0, le=50000, description="Number of boost connects to use"),
     bid_service: BidService = Depends(get_bid_service)
 ):
     """Calculate bid costs for given connect usage."""

@@ -272,7 +272,7 @@ class TeamRepository(BaseRepository[Team], ITeamRepository):
         try:
             # First check if team has members
             member_count = db.query(User).filter(User.team_id == team_id).count()
-            if member_count > 0:
+            if member_count > 1:
                 logger.warning(f"Cannot delete team {team_id}: has {member_count} members")
                 return False
             
