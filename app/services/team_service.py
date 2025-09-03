@@ -291,6 +291,12 @@ class TeamService(ITeamService):
             user_repo = UserRepository()
             user = user_repo.get_by_id(db, user_data.user_id)
             
+            if user.role == UserRole.ADMIN:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Add Admin User Denied"
+                )
+
             if not user:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -301,7 +307,7 @@ class TeamService(ITeamService):
             if user.team_id:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"User is already a member of team: {user.team.name if user.team else 'Unknown'}"
+                    detail=f"User is already a member of this team"
                 )
             
             # Check if user is active

@@ -318,7 +318,6 @@ class UserSession(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    refresh_token = Column(String(500), nullable=False, unique=True)
     status = Column(Enum(SessionStatus), default=SessionStatus.ACTIVE)
     ip_address = Column(String(45))
     user_agent = Column(Text)

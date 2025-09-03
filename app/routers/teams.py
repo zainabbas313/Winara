@@ -333,158 +333,159 @@ async def get_team_members(
             detail="Failed to retrieve team members"
         )
 # Team goals management
-@router.get("/teams/{team_id}/goals", response_model=List[TeamGoalResponse])
-async def get_team_goals(
-    team_id: str,
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    team_service: TeamService = Depends(get_team_service)
-):
-    """
-    Get team goals.
+
+# @router.get("/teams/{team_id}/goals", response_model=List[TeamGoalResponse])
+# async def get_team_goals(
+#     team_id: str,
+#     current_user: CurrentUser,
+#     db: DatabaseSession,
+#     team_service: TeamService = Depends(get_team_service)
+# ):
+#     """
+#     Get team goals.
     
-    Access control:
-    - Admin: Can see goals for any team
-    - Sub-Admin: Can see goals for their own team
-    - Member: Cannot access this endpoint
-    """
-    if current_user.role == UserRole.MEMBER:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions"
-        )
+#     Access control:
+#     - Admin: Can see goals for any team
+#     - Sub-Admin: Can see goals for their own team
+#     - Member: Cannot access this endpoint
+#     """
+#     if current_user.role == UserRole.MEMBER:
+#         raise HTTPException(
+#             status_code=status.HTTP_403_FORBIDDEN,
+#             detail="Insufficient permissions"
+#         )
     
-    try:
-        team_uuid = UUID(team_id)
+#     try:
+#         team_uuid = UUID(team_id)
         
-        # Validate access
-        if (current_user.role == UserRole.SUB_ADMIN and 
-            current_user.team_id != team_uuid):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Can only access your own team goals"
-            )
+#         # Validate access
+#         if (current_user.role == UserRole.SUB_ADMIN and 
+#             current_user.team_id != team_uuid):
+#             raise HTTPException(
+#                 status_code=status.HTTP_403_FORBIDDEN,
+#                 detail="Can only access your own team goals"
+#             )
         
-        return team_service.get_team_goals(db, team_uuid)
+#         return team_service.get_team_goals(db, team_uuid)
         
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid team ID format"
-        )
+#     except ValueError:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Invalid team ID format"
+#         )
 
 
-@router.post("/teams/{team_id}/goals", response_model=TeamGoalResponse)
-async def create_team_goal(
-    team_id: str,
-    goal_data: TeamGoalCreate,
-    current_user: CurrentSubAdminUser,
-    db: DatabaseSession,
-    team_service: TeamService = Depends(get_team_service)
-):
-    """
-    Create team goal (Sub-Admin and Admin only).
+# @router.post("/teams/{team_id}/goals", response_model=TeamGoalResponse)
+# async def create_team_goal(
+#     team_id: str,
+#     goal_data: TeamGoalCreate,
+#     current_user: CurrentSubAdminUser,
+#     db: DatabaseSession,
+#     team_service: TeamService = Depends(get_team_service)
+# ):
+#     """
+#     Create team goal (Sub-Admin and Admin only).
     
-    - **goal_name**: Descriptive name for the goal
-    - **goal_type**: Type of goal (bids, wins, revenue, win_rate)
-    - **target_value**: Target value to achieve
-    - **unit**: Unit of measurement
-    - **period_start**: Goal period start date
-    - **period_end**: Goal period end date
-    """
-    try:
-        team_uuid = UUID(team_id)
+#     - **goal_name**: Descriptive name for the goal
+#     - **goal_type**: Type of goal (bids, wins, revenue, win_rate)
+#     - **target_value**: Target value to achieve
+#     - **unit**: Unit of measurement
+#     - **period_start**: Goal period start date
+#     - **period_end**: Goal period end date
+#     """
+#     try:
+#         team_uuid = UUID(team_id)
         
-        # Validate access
-        if (current_user.role == UserRole.SUB_ADMIN and 
-            current_user.team_id != team_uuid):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Can only create goals for your own team"
-            )
+#         # Validate access
+#         if (current_user.role == UserRole.SUB_ADMIN and 
+#             current_user.team_id != team_uuid):
+#             raise HTTPException(
+#                 status_code=status.HTTP_403_FORBIDDEN,
+#                 detail="Can only create goals for your own team"
+#             )
         
-        return team_service.create_team_goal(
-            db, team_uuid, goal_data, current_user.id
-        )
+#         return team_service.create_team_goal(
+#             db, team_uuid, goal_data, current_user.id
+#         )
         
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid team ID format"
-        )
+#     except ValueError:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Invalid team ID format"
+#         )
 
 
-@router.put("/teams/{team_id}/goals/{goal_id}", response_model=TeamGoalResponse)
-async def update_team_goal(
-    team_id: str,
-    goal_id: str,
-    goal_data: TeamGoalUpdate,
-    current_user: CurrentSubAdminUser,
-    db: DatabaseSession,
-    team_service: TeamService = Depends(get_team_service)
-):
-    """
-    Update team goal (Sub-Admin and Admin only).
-    """
-    try:
-        team_uuid = UUID(team_id)
-        goal_uuid = UUID(goal_id)
+# @router.put("/teams/{team_id}/goals/{goal_id}", response_model=TeamGoalResponse)
+# async def update_team_goal(
+#     team_id: str,
+#     goal_id: str,
+#     goal_data: TeamGoalUpdate,
+#     current_user: CurrentSubAdminUser,
+#     db: DatabaseSession,
+#     team_service: TeamService = Depends(get_team_service)
+# ):
+#     """
+#     Update team goal (Sub-Admin and Admin only).
+#     """
+#     try:
+#         team_uuid = UUID(team_id)
+#         goal_uuid = UUID(goal_id)
         
-        # Validate access
-        if (current_user.role == UserRole.SUB_ADMIN and 
-            current_user.team_id != team_uuid):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Can only update goals for your own team"
-            )
+#         # Validate access
+#         if (current_user.role == UserRole.SUB_ADMIN and 
+#             current_user.team_id != team_uuid):
+#             raise HTTPException(
+#                 status_code=status.HTTP_403_FORBIDDEN,
+#                 detail="Can only update goals for your own team"
+#             )
         
-        goal = team_service.update_team_goal(db, goal_uuid, goal_data)
+#         goal = team_service.update_team_goal(db, goal_uuid, goal_data)
         
-        if not goal:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Team goal not found"
-            )
+#         if not goal:
+#             raise HTTPException(
+#                 status_code=status.HTTP_404_NOT_FOUND,
+#                 detail="Team goal not found"
+#             )
         
-        return goal
+#         return goal
         
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid ID format"
-        )
+#     except ValueError:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Invalid ID format"
+#         )
 
 
-@router.delete("/teams/{team_id}/goals/{goal_id}", response_model=SuccessResponse)
-async def delete_team_goal(
-    team_id: str,
-    goal_id: str,
-    current_user: CurrentSubAdminUser,
-    db: DatabaseSession,
-    team_service: TeamService = Depends(get_team_service)
-):
-    """
-    Delete team goal (Sub-Admin and Admin only).
-    """
-    try:
-        team_uuid = UUID(team_id)
-        goal_uuid = UUID(goal_id)
+# @router.delete("/teams/{team_id}/goals/{goal_id}", response_model=SuccessResponse)
+# async def delete_team_goal(
+#     team_id: str,
+#     goal_id: str,
+#     current_user: CurrentSubAdminUser,
+#     db: DatabaseSession,
+#     team_service: TeamService = Depends(get_team_service)
+# ):
+#     """
+#     Delete team goal (Sub-Admin and Admin only).
+#     """
+#     try:
+#         team_uuid = UUID(team_id)
+#         goal_uuid = UUID(goal_id)
         
-        # Validate access
-        if (current_user.role == UserRole.SUB_ADMIN and 
-            current_user.team_id != team_uuid):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Can only delete goals for your own team"
-            )
+#         # Validate access
+#         if (current_user.role == UserRole.SUB_ADMIN and 
+#             current_user.team_id != team_uuid):
+#             raise HTTPException(
+#                 status_code=status.HTTP_403_FORBIDDEN,
+#                 detail="Can only delete goals for your own team"
+#             )
         
-        return team_service.delete_team_goal(db, goal_uuid)
+#         return team_service.delete_team_goal(db, goal_uuid)
         
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid ID format"
-        )
+#     except ValueError:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Invalid ID format"
+#         )
 
 
 # Team statistics and performance
@@ -591,35 +592,35 @@ async def update_team_statistics(
         )
 
 
-@router.post("/teams/{team_id}/update-goal-progress", response_model=SuccessResponse)
-async def update_goal_progress(
-    team_id: str,
-    current_user: CurrentSubAdminUser,
-    db: DatabaseSession,
-    team_service: TeamService = Depends(get_team_service)
-):
-    """
-    Update progress for all active team goals (Sub-Admin and Admin only).
-    """
-    try:
-        team_uuid = UUID(team_id)
+# @router.post("/teams/{team_id}/update-goal-progress", response_model=SuccessResponse)
+# async def update_goal_progress(
+#     team_id: str,
+#     current_user: CurrentSubAdminUser,
+#     db: DatabaseSession,
+#     team_service: TeamService = Depends(get_team_service)
+# ):
+#     """
+#     Update progress for all active team goals (Sub-Admin and Admin only).
+#     """
+#     try:
+#         team_uuid = UUID(team_id)
         
-        # Validate access
-        if (current_user.role == UserRole.SUB_ADMIN and 
-            current_user.team_id != team_uuid):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Can only update goals for your own team"
-            )
+#         # Validate access
+#         if (current_user.role == UserRole.SUB_ADMIN and 
+#             current_user.team_id != team_uuid):
+#             raise HTTPException(
+#                 status_code=status.HTTP_403_FORBIDDEN,
+#                 detail="Can only update goals for your own team"
+#             )
         
-        team_service.update_goal_progress(db, team_uuid)
-        return SuccessResponse(message="Goal progress updated successfully")
+#         team_service.update_goal_progress(db, team_uuid)
+#         return SuccessResponse(message="Goal progress updated successfully")
         
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid team ID format"
-        )
+#     except ValueError:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Invalid team ID format"
+#         )
 
 @router.post("/teams/{team_id}/members/bulk", response_model=BulkAddUsersResponse)
 async def bulk_add_users_to_team(
@@ -713,71 +714,72 @@ async def get_available_users_for_team(
         )
 
 
-@router.get("/teams/{team_id}/members/statistics", response_model=dict)
-async def get_team_member_statistics(
-    team_id: str,
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    team_service: TeamService = Depends(get_team_service)
-):
-    """
-    Get comprehensive team member statistics.
+# @router.get("/teams/{team_id}/members/statistics", response_model=dict)
+# async def get_team_member_statistics(
+#     team_id: str,
+#     current_user: CurrentUser,
+#     db: DatabaseSession,
+#     team_service: TeamService = Depends(get_team_service)
+# ):
+#     """
+#     Get comprehensive team member statistics.
     
-    Includes:
-    - Total and active member counts
-    - Role distribution
-    - Individual member performance metrics
-    """
-    if current_user.role == UserRole.MEMBER:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions"
-        )
+#     Includes:
+#     - Total and active member counts
+#     - Role distribution
+#     - Individual member performance metrics
+#     """
+#     if current_user.role == UserRole.MEMBER:
+#         raise HTTPException(
+#             status_code=status.HTTP_403_FORBIDDEN,
+#             detail="Insufficient permissions"
+#         )
     
-    try:
-        team_uuid = UUID(team_id)
+#     try:
+#         team_uuid = UUID(team_id)
         
-        # Validate access
-        if (current_user.role == UserRole.SUB_ADMIN and 
-            current_user.team_id != team_uuid):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Can only view statistics for your own team"
-            )
+#         # Validate access
+#         if (current_user.role == UserRole.SUB_ADMIN and 
+#             current_user.team_id != team_uuid):
+#             raise HTTPException(
+#                 status_code=status.HTTP_403_FORBIDDEN,
+#                 detail="Can only view statistics for your own team"
+#             )
         
-        from repositories.team_repository import TeamRepository
-        team_repo = TeamRepository()
-        return team_repo.get_team_member_statistics(db, team_uuid)
+#         from repositories.team_repository import TeamRepository
+#         team_repo = TeamRepository()
+#         return team_repo.get_team_member_statistics(db, team_uuid)
         
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid team ID format"
-        )
+#     except ValueError:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Invalid team ID format"
+#         )
 
 
-@router.post("/teams/{team_id}/members/update-statistics", response_model=SuccessResponse)
-async def update_team_member_statistics(
-    team_id: str,
-    current_user: CurrentAdminUser,
-    db: DatabaseSession,
-):
-    """
-    Update statistics for all team members (Admin only).
+# @router.post("/teams/{team_id}/members/update-statistics", response_model=SuccessResponse)
+# async def update_team_member_statistics(
+#     team_id: str,
+#     current_user: CurrentAdminUser,
+#     db: DatabaseSession,
+# ):
+#     """
+#     Update statistics for all team members (Admin only).
     
-    This recalculates performance metrics for all team members.
-    """
-    try:
-        team_uuid = UUID(team_id)
+#     This recalculates performance metrics for all team members.
+#     """
+#     try:
+#         team_uuid = UUID(team_id)
         
-        from repositories.team_repository import TeamRepository
-        team_repo = TeamRepository()
-        team_repo.update_team_member_statistics(db, team_uuid)
+#         from repositories.team_repository import TeamRepository
+#         team_repo = TeamRepository()
+#         team_repo.update_team_member_statistics(db, team_uuid)
         
-        return SuccessResponse(message="Team member statistics updated successfully")
+#         return SuccessResponse(message="Team member statistics updated successfully")
         
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid team ID format"
-        )
+#     except ValueError:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Invalid team ID format"
+#         )
+    

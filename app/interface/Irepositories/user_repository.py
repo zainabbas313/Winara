@@ -69,7 +69,7 @@ class IUserRepository(ABC):
         pass
     
     @abstractmethod
-    def get_session_by_token(self, db: Session, refresh_token: str) -> Optional[UserSession]:
+    def get_session_by_user_id(self, db: Session, user_id: str) -> Optional[UserSession]:
         """Get session by refresh token."""
         pass
     

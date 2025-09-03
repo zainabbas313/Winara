@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, validator
 from typing import Optional
 from datetime import datetime
 from uuid import UUID
@@ -18,7 +18,10 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
 
-
+    @validator("email", pre=True, always=True)
+    def normalize_email(cls, v: str) -> str:
+        return v.lower() if isinstance(v, str) else v
+    
 class TokenResponse(BaseModel):
     access_token: str
     expires_in: int
@@ -89,10 +92,28 @@ class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str = Field(min_length=8)
 
-
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str = Field(min_length=8)
+
+    @validator("new_password")
+    def validate_new_password(cls, new_password, values):
+        # Ensure we have the current password in values
+        current_password = values.get("current_password")
+        
+        if current_password and new_password == current_password:
+            raise ValueError("New password cannot be the same as current password.")
+
+        # Optional: add extra password rules
+        if not any(char.isupper() for char in new_password):
+            raise ValueError("New password must contain at least one uppercase letter.")
+        if not any(char.isdigit() for char in new_password):
+            raise ValueError("New password must contain at least one digit.")
+        if not any(char in "!@#$%^&*()-_=+[{]};:'\",<.>/?\\" for char in new_password):
+            raise ValueError("New password must contain at least one special character.")
+
+        return new_password
+
 
 
 class UserSessionResponse(BaseModel):
