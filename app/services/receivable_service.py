@@ -3,10 +3,11 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 from datetime import date, datetime
 from fastapi import HTTPException, status
-from models.models import Receivable, Bid, BidStatus, UserRole, ReceivableStatus
+from models.models import Receivable, Bid, BidStatus, UserRole, ReceivableStatus, ProjectModule, PaymentType, ModuleStatus
 from schemas.receivable import (
     ReceivableCreate, ReceivableUpdate, ReceivableResponse, ReceivableListFilter,
-    ReceivableStatusUpdate, ReceivableStats, ReceivableDerived
+    ReceivableStatusUpdate, ReceivableStats, ReceivableDerived, BulkReceivableCreate,
+    BidReceivableResponse, ProjectModuleResponse
 )
 from schemas.common import SuccessResponse, PaginatedResponse
 from repositories.receivable_repository import ReceivableRepository
@@ -39,20 +40,48 @@ class ReceivableService(IReceivableService):
                     detail="Can only create receivables for won bids"
                 )
             
-            # Check if receivable already exists for this bid
-            existing_receivable = self.repository.get_by_bid(db, receivable_data.bid_id)
-            if existing_receivable:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Receivable already exists for this bid"
-                )
-            
             # Validate team access
             if user_role == UserRole.SUB_ADMIN.value:
-                if receivable_data.team_id != user_team_id:
+                if bid.team_id != user_team_id:
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
-                        detail="Can only create receivables for your own team"
+                        detail="Can only create receivables for your own team's bids"
+                    )
+            
+            # Validate module if module-based payment
+            if receivable_data.payment_type == PaymentType.MODULE_BASED:
+                if not receivable_data.module_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Module ID is required for module-based payments"
+                    )
+                
+                module = db.query(ProjectModule).filter(
+                    ProjectModule.id == receivable_data.module_id,
+                    ProjectModule.bid_id == receivable_data.bid_id
+                ).first()
+                
+                if not module:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Module not found or doesn't belong to this bid"
+                    )
+                
+                # Check if receivable already exists for this module
+                existing_receivable = self.repository.get_by_module(db, receivable_data.module_id)
+                if existing_receivable:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Receivable already exists for this module"
+                    )
+            
+            else:  # Single payment
+                # Check if any receivable already exists for this bid
+                existing_receivables = self.repository.get_by_bid(db, receivable_data.bid_id)
+                if existing_receivables:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Receivable already exists for this bid"
                     )
             
             receivable = self.repository.create(db, receivable_data, created_by_id)
@@ -65,6 +94,56 @@ class ReceivableService(IReceivableService):
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Internal server error while creating receivable"
+            )
+    
+    def create_bulk_receivables(self, db: Session, bulk_data: BulkReceivableCreate,
+                               created_by_id: UUID, user_role: str, user_team_id: Optional[UUID] = None) -> List[ReceivableResponse]:
+        """Create receivables for all modules of a bid."""
+        try:
+            # Validate bid exists and is won
+            bid = db.query(Bid).filter(Bid.id == bulk_data.bid_id).first()
+            if not bid:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Bid not found"
+                )
+            
+            if bid.status != BidStatus.WON:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Can only create receivables for won bids"
+                )
+            
+            # Validate team access
+            if user_role == UserRole.SUB_ADMIN.value:
+                if bid.team_id != user_team_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Can only create receivables for your own team's bids"
+                    )
+            
+            # Check if any receivables already exist for this bid
+            existing_receivables = self.repository.get_by_bid(db, bulk_data.bid_id)
+            if existing_receivables:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Receivables already exist for this bid"
+                )
+            
+            # Create modules and receivables
+            receivables = self.repository.create_bulk_modules_and_receivables(
+                db, bulk_data.bid_id, bulk_data.modules, created_by_id, bulk_data.currency
+            )
+            
+            return [self._to_response(receivable) for receivable in receivables]
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error creating bulk receivables: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal server error while creating bulk receivables"
             )
     
     def get_receivable(self, db: Session, receivable_id: UUID, user_id: UUID,
@@ -83,6 +162,54 @@ class ReceivableService(IReceivableService):
         
         return self._to_response(receivable)
     
+    def get_bid_receivables(self, db: Session, bid_id: UUID, user_id: UUID, user_role: str,
+                           user_team_id: Optional[UUID] = None) -> BidReceivableResponse:
+        """Get all receivables for a specific bid."""
+        try:
+            # Get bid with access control
+            bid = db.query(Bid).filter(Bid.id == bid_id).first()
+            if not bid:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Bid not found"
+                )
+            
+            # Check access
+            if user_role == UserRole.SUB_ADMIN.value:
+                if bid.team_id != user_team_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Access denied to this bid"
+                    )
+            
+            # Get receivables
+            receivables = self.repository.get_by_bid(db, bid_id)
+            
+            # Get modules if they exist
+            modules = db.query(ProjectModule).filter(ProjectModule.bid_id == bid_id).all()
+            
+            # Calculate total contract value
+            total_contract_value = sum(r.contract_value for r in receivables)
+            
+            return BidReceivableResponse(
+                bid_id=bid.id,
+                job_title=bid.job_title,
+                client_name=str(bid.client_name),
+                has_modules=bid.has_modules,
+                total_contract_value=total_contract_value,
+                receivables=[self._to_response(r) for r in receivables],
+                modules=[self._module_to_response(m) for m in modules]
+            )
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error getting bid receivables: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal server error while getting bid receivables"
+            )
+    
     def get_receivables(self, db: Session, filters: ReceivableListFilter, user_id: UUID, user_role: str, 
                        skip: int = 0, limit: int = 20, sort_by: str = "-created_at",
                        user_team_id: Optional[UUID] = None) -> PaginatedResponse[ReceivableResponse]:
@@ -93,7 +220,14 @@ class ReceivableService(IReceivableService):
         
         result = self.repository.get_all(db, filters, skip, limit, sort_by)
         
-        return result
+        # Convert items to response format
+        response_items = [self._to_response(item) for item in result.items]
+        
+        return PaginatedResponse(
+            items=response_items,
+            next_cursor=result.next_cursor,
+            count=result.count
+        )
     
     def update_receivable(self, db: Session, receivable_id: UUID, receivable_data: ReceivableUpdate,
                          user_id: UUID, user_role: str, user_team_id: Optional[UUID] = None) -> Optional[ReceivableResponse]:
@@ -241,6 +375,7 @@ class ReceivableService(IReceivableService):
                 avg_payment_days=stats_data.get('avg_payment_days'),
                 collection_rate=stats_data.get('collection_rate', 0),
                 by_status=stats_data.get('by_status', []),
+                by_payment_type=stats_data.get('by_payment_type', []),
                 by_currency=stats_data.get('by_currency', []),
                 current_month_value=stats_data.get('current_month_value', 0),
                 next_month_value=stats_data.get('next_month_value', 0)
@@ -316,7 +451,7 @@ class ReceivableService(IReceivableService):
         if user_role == UserRole.ADMIN.value:
             return True
         elif user_role == UserRole.SUB_ADMIN.value:
-            return receivable.team_id == user_team_id
+            return receivable.bid.team_id == user_team_id
         else:
             return False  # Members don't have access to receivables
     
@@ -363,24 +498,50 @@ class ReceivableService(IReceivableService):
             payment_delay=payment_delay
         )
     
+    def _module_to_response(self, module: ProjectModule) -> ProjectModuleResponse:
+        """Convert ProjectModule to response format."""
+        return ProjectModuleResponse(
+            id=module.id,
+            bid_id=module.bid_id,
+            module_name=module.module_name,
+            description=module.description,
+            module_amount=module.module_amount,
+            order_sequence=module.order_sequence,
+            status=module.status,
+            created_at=module.created_at,
+            updated_at=module.updated_at
+        )
+    
     def _to_response(self, receivable: Receivable) -> ReceivableResponse:
         """Convert Receivable model to ReceivableResponse schema."""
         derived = self._calculate_derived_fields(receivable)
         
+        # Get client name and project title
+        client_name = receivable.bid.client_name if receivable.bid else None
+        
+        if receivable.module:
+            project_title = f"{receivable.bid.job_title} - {receivable.module.module_name}"
+            module_response = self._module_to_response(receivable.module)
+        else:
+            project_title = receivable.bid.job_title if receivable.bid else None
+            module_response = None
+        
         return ReceivableResponse(
             id=receivable.id,
             bid_id=receivable.bid_id,
-            team_id=receivable.team_id,
-            client_name=receivable.client_name,
-            project_title=receivable.project_title,
+            module_id=receivable.module_id,
             contract_value=receivable.contract_value,
             expected_payment_date=receivable.expected_payment_date,
             actual_payment_date=receivable.actual_payment_date,
             payment_amount=receivable.payment_amount,
             status=receivable.status,
+            payment_type=receivable.payment_type,
             currency=receivable.currency,
             created_at=receivable.created_at,
             updated_at=receivable.updated_at,
             created_by_id=receivable.created_by_id,
-            derived=derived
+            derived=derived,
+            module=module_response,
+            client_name=str(client_name),
+            project_title=project_title
         )

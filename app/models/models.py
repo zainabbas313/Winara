@@ -103,6 +103,17 @@ class InsightType(str, enum.Enum):
     OPPORTUNITY = "opportunity"
     RISK = "risk"
     ALERT = "alert"
+
+class ModuleStatus(str, enum.Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress" 
+    COMPLETED = "completed"
+    PAID = "paid"
+
+
+class PaymentType(str, enum.Enum):
+    SINGLE = "single"
+    MODULE_BASED = "module_based"
 # ==========================
 # MODELS
 # ==========================
@@ -167,7 +178,6 @@ class Team(Base):
     created_by = relationship("User", foreign_keys=[created_by_id], back_populates="created_teams", post_update=True)
     members = relationship("User", foreign_keys="User.team_id", back_populates="team")
     bids = relationship("Bid", back_populates="team")
-    receivables = relationship("Receivable", back_populates="team")
     goals = relationship("TeamGoal", back_populates="team")
 
 
@@ -192,6 +202,7 @@ class TeamGoal(Base):
     # Relationships
     team = relationship("Team", back_populates="goals")
     created_by = relationship("User")
+    
 class Vertical(Base):
     __tablename__ = "verticals"
 
@@ -279,6 +290,7 @@ class Bid(Base):
     is_featured = Column(Boolean, default=False)
     competition_level = Column(Integer, default=1)
     notes = Column(Text)
+    has_modules = Column(Boolean, default=False)  # New: indicates if project is split into modules
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
@@ -286,7 +298,26 @@ class Bid(Base):
     vertical = relationship("Vertical", back_populates="bids")
     member = relationship("User", back_populates="bids")
     team = relationship("Team", back_populates="bids")
-    receivable = relationship("Receivable", back_populates="bid", uselist=False)
+    receivables = relationship("Receivable", back_populates="bid", cascade="all, delete-orphan")
+    modules = relationship("ProjectModule", back_populates="bid", cascade="all, delete-orphan")
+
+
+class ProjectModule(Base):
+    __tablename__ = "project_modules"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    bid_id = Column(UUID(as_uuid=True), ForeignKey("bids.id"), nullable=False)
+    module_name = Column(String(500), nullable=False)
+    description = Column(Text)
+    module_amount = Column(DECIMAL(12, 2), nullable=False)
+    order_sequence = Column(Integer, default=1)  # For ordering modules
+    status = Column(Enum(ModuleStatus), default=ModuleStatus.PENDING)  # PENDING, IN_PROGRESS, COMPLETED, PAID
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    bid = relationship("Bid", back_populates="modules")
+    receivable = relationship("Receivable", back_populates="module", uselist=False)
 
 
 class Receivable(Base):
@@ -294,24 +325,45 @@ class Receivable(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     bid_id = Column(UUID(as_uuid=True), ForeignKey("bids.id"), nullable=False)
-    team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id"), nullable=False)
-    client_name = Column(String(200), nullable=False)
-    project_title = Column(String(500), nullable=False)
+    module_id = Column(UUID(as_uuid=True), ForeignKey("project_modules.id"), nullable=True)  # Null for single payment
     contract_value = Column(DECIMAL(12, 2), nullable=False)
     expected_payment_date = Column(Date, nullable=False)
     actual_payment_date = Column(Date)
     payment_amount = Column(DECIMAL(12, 2))
     status = Column(Enum(ReceivableStatus), default=ReceivableStatus.PENDING)
     currency = Column(String(3), default="USD")
+    payment_type = Column(Enum(PaymentType), default=PaymentType.SINGLE)  # SINGLE, MODULE_BASED
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     created_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     
     # Relationships
-    bid = relationship("Bid", back_populates="receivable")
-    team = relationship("Team", back_populates="receivables")
+    bid = relationship("Bid", back_populates="receivables")
+    module = relationship("ProjectModule", back_populates="receivable")
     created_by = relationship("User")
-
+    
+    # Properties to access bid-related information
+    @property
+    def team_id(self):
+        return self.bid.team_id
+    
+    @property
+    def team(self):
+        return self.bid.team
+    
+    @property
+    def client_name(self):
+        return self.bid.client_name
+    
+    @property
+    def project_title(self):
+        if self.module:
+            return f"{self.bid.job_title} - {self.module.module_name}"
+        return self.bid.job_title
+    
+    @property
+    def is_module_payment(self):
+        return self.module_id is not None
 
 class UserSession(Base):
     __tablename__ = "user_sessions"
