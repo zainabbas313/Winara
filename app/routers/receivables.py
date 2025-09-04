@@ -10,10 +10,11 @@ from dependencies.dependencies import (
 from services.receivable_service import ReceivableService
 from schemas.receivable import (
     ReceivableCreate, ReceivableUpdate, ReceivableResponse, ReceivableListFilter,
-    ReceivableStatusUpdate, ReceivableStats, ReceivableSummary
+    ReceivableStatusUpdate, ReceivableStats, ReceivableSummary, BulkReceivableCreate,
+    BidReceivableResponse, ProjectModuleCreate
 )
 from schemas.common import SuccessResponse, PaginatedResponse
-from models.models import UserRole, ReceivableStatus
+from models.models import UserRole, ReceivableStatus, PaymentType
 import logging
 
 logger = logging.getLogger(__name__)
@@ -36,11 +37,10 @@ async def create_receivable(
     Create a new receivable (Sub-Admin and Admin only).
     
     - **bid_id**: ID of the won bid
-    - **team_id**: ID of the team
-    - **client_name**: Name of the client
-    - **project_title**: Title of the project
-    - **contract_value**: Value of the contract
+    - **module_id**: ID of the module (for module-based payments)
+    - **contract_value**: Value of the contract/module
     - **expected_payment_date**: Expected payment date
+    - **payment_type**: SINGLE or MODULE_BASED
     - **currency**: Currency code (default USD)
     """
     return receivable_service.create_receivable(
@@ -48,15 +48,39 @@ async def create_receivable(
         current_user.role, current_user.team_id
     )
 
+
+@router.post("/bulk", response_model=List[ReceivableResponse], status_code=status.HTTP_201_CREATED)
+async def create_bulk_receivables(
+    bulk_data: BulkReceivableCreate,
+    current_user: CurrentSubAdminUser,
+    db: DatabaseSession,
+    receivable_service: ReceivableService = Depends(get_receivable_service)
+):
+    """
+    Create receivables for all modules of a bid (Sub-Admin and Admin only).
+    
+    This endpoint:
+    1. Creates all modules for the bid
+    2. Creates a receivable for each module
+    3. Returns all created receivables
+    """
+    return receivable_service.create_bulk_receivables(
+        db, bulk_data, current_user.id,
+        current_user.role, current_user.team_id
+    )
+
+
 @router.get("/", response_model=PaginatedResponse[ReceivableResponse])
 async def get_receivables(
     current_user: CurrentUser,
     db: DatabaseSession,
     team_id: Optional[str] = Query(None, description="Filter by team ID"),
     status: Optional[ReceivableStatus] = Query(None, description="Filter by status"),
+    payment_type: Optional[PaymentType] = Query(None, description="Filter by payment type"),
     date_from: Optional[date] = Query(None, description="Filter from this date"),
     date_to: Optional[date] = Query(None, description="Filter until this date"),
     client_name: Optional[str] = Query(None, description="Search by client name"),
+    module_id: Optional[str] = Query(None, description="Filter by module ID"),
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=100, description="Number of records to return"),
     sort: str = Query("-created_at", description="Sort field and direction"),
@@ -70,14 +94,12 @@ async def get_receivables(
     - Sub-Admin: Can see receivables for their team
     - Member: Cannot access this endpoint
     """
-    print("hello")
     if current_user.role == UserRole.MEMBER:
         raise HTTPException(
             status_code=http_status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions"
         )
 
-    
     # Validate team_id if provided
     team_uuid = None
     if team_id:
@@ -89,12 +111,25 @@ async def get_receivables(
                 detail="Invalid team ID format"
             )
     
+    # Validate module_id if provided
+    module_uuid = None
+    if module_id:
+        try:
+            module_uuid = UUID(module_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail="Invalid module ID format"
+            )
+    
     filters = ReceivableListFilter(
         team_id=team_uuid,
         status=status,
+        payment_type=payment_type,
         date_from=date_from,
         date_to=date_to,
-        client_name=client_name
+        client_name=client_name,
+        module_id=module_uuid
     )
     
     return receivable_service.get_receivables(
@@ -102,47 +137,80 @@ async def get_receivables(
         skip, limit, sort, current_user.team_id
     )
 
-# @router.get("/{receivable_id}", response_model=ReceivableResponse)
-# async def get_receivable(
-#     receivable_id: str,
-#     current_user: CurrentUser,
-#     db: DatabaseSession,
-#     receivable_service: ReceivableService = Depends(get_receivable_service)
-# ):
-#     """
-#     Get receivable by ID.
+
+@router.get("/bid/{bid_id}", response_model=BidReceivableResponse)
+async def get_bid_receivables(
+    bid_id: str,
+    current_user: CurrentUser,
+    db: DatabaseSession,
+    receivable_service: ReceivableService = Depends(get_receivable_service)
+):
+    """
+    Get all receivables for a specific bid.
     
-#     Access control:
-#     - Admin: Can see any receivable
-#     - Sub-Admin: Can see receivables for their team
-#     - Member: Cannot access this endpoint
-#     """
-#     print("hello")
-#     if current_user.role == UserRole.MEMBER:
-#         raise HTTPException(
-#             status_code=status.HTTP_403_FORBIDDEN,
-#             detail="Insufficient permissions"
-#         )
+    Access control:
+    - Admin: Can see any bid's receivables
+    - Sub-Admin: Can see receivables for their team's bids
+    - Member: Cannot access this endpoint
+    """
+    if current_user.role == UserRole.MEMBER:
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions"
+        )
     
-#     try:
-#         receivable_uuid = UUID(receivable_id)
-#         receivable = receivable_service.get_receivable(
-#             db, receivable_uuid, current_user.id,
-#             current_user.role, current_user.team_id
-#         )
+    try:
+        bid_uuid = UUID(bid_id)
+        return receivable_service.get_bid_receivables(
+            db, bid_uuid, current_user.id, current_user.role, current_user.team_id
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Invalid bid ID format"
+        )
+
+
+@router.get("/{receivable_id}", response_model=ReceivableResponse)
+async def get_receivable(
+    receivable_id: str,
+    current_user: CurrentUser,
+    db: DatabaseSession,
+    receivable_service: ReceivableService = Depends(get_receivable_service)
+):
+    """
+    Get receivable by ID.
+    
+    Access control:
+    - Admin: Can see any receivable
+    - Sub-Admin: Can see receivables for their team
+    - Member: Cannot access this endpoint
+    """
+    if current_user.role == UserRole.MEMBER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions"
+        )
+    
+    try:
+        receivable_uuid = UUID(receivable_id)
+        receivable = receivable_service.get_receivable(
+            db, receivable_uuid, current_user.id,
+            current_user.role, current_user.team_id
+        )
         
-#         if not receivable:
-#             raise HTTPException(
-#                 status_code=status.HTTP_404_NOT_FOUND,
-#                 detail="Receivable not found"
-#             )
+        if not receivable:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Receivable not found"
+            )
         
-#         return receivable
-#     except ValueError:
-#         raise HTTPException(
-#             status_code=status.HTTP_400_BAD_REQUEST,
-#             detail="Invalid receivable ID format"
-#         )
+        return receivable
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid receivable ID format"
+        )
 
 
 @router.put("/{receivable_id}", response_model=ReceivableResponse)
@@ -237,6 +305,25 @@ async def delete_receivable(
         )
 
 
+# Module management endpoints
+@router.post("/modules/", response_model=List[ReceivableResponse], status_code=status.HTTP_201_CREATED)
+async def create_modules_with_receivables(
+    bid_id: UUID,
+    modules: List[ProjectModuleCreate],
+    current_user: CurrentSubAdminUser,
+    db: DatabaseSession,
+    receivable_service: ReceivableService = Depends(get_receivable_service)
+):
+    """
+    Create modules and their corresponding receivables for a bid.
+    """
+    bulk_data = BulkReceivableCreate(bid_id=bid_id, modules=modules)
+    return receivable_service.create_bulk_receivables(
+        db, bulk_data, current_user.id,
+        current_user.role, current_user.team_id
+    )
+
+
 # Status and filtering endpoints
 @router.get("/status/overdue", response_model=List[ReceivableResponse])
 async def get_overdue_receivables(
@@ -279,6 +366,7 @@ async def get_receivable_statistics(
     - Pending value
     - Overdue value and count
     - Average payment days
+    - Breakdown by payment type
     """
     if current_user.role == UserRole.MEMBER:
         raise HTTPException(
@@ -307,7 +395,7 @@ async def get_receivable_statistics(
         )
 
 
-# Analytics and reporting endpoints
+# Analytics and reporting endpoints (keeping existing ones)
 @router.get("/analytics/monthly-summary")
 async def get_monthly_receivables_summary(
     current_user: CurrentUser,
@@ -317,9 +405,7 @@ async def get_monthly_receivables_summary(
     team_id: Optional[str] = Query(None, description="Filter by team ID"),
     receivable_service: ReceivableService = Depends(get_receivable_service)
 ):
-    """
-    Get monthly receivables summary.
-    """
+    """Get monthly receivables summary."""
     if current_user.role == UserRole.MEMBER:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -329,7 +415,6 @@ async def get_monthly_receivables_summary(
     try:
         team_uuid = UUID(team_id) if team_id else None
         
-        # Validate access
         if current_user.role == UserRole.SUB_ADMIN:
             if team_uuid and team_uuid != current_user.team_id:
                 raise HTTPException(
@@ -355,9 +440,7 @@ async def get_payment_trends(
     team_id: Optional[str] = Query(None, description="Filter by team ID"),
     receivable_service: ReceivableService = Depends(get_receivable_service)
 ):
-    """
-    Get payment trends over specified period.
-    """
+    """Get payment trends over specified period."""
     if current_user.role == UserRole.MEMBER:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -367,7 +450,6 @@ async def get_payment_trends(
     try:
         team_uuid = UUID(team_id) if team_id else None
         
-        # Validate access
         if current_user.role == UserRole.SUB_ADMIN:
             if team_uuid and team_uuid != current_user.team_id:
                 raise HTTPException(
@@ -392,9 +474,7 @@ async def get_client_summary(
     team_id: Optional[str] = Query(None, description="Filter by team ID"),
     receivable_service: ReceivableService = Depends(get_receivable_service)
 ):
-    """
-    Get summary statistics by client.
-    """
+    """Get summary statistics by client."""
     if current_user.role == UserRole.MEMBER:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -404,7 +484,6 @@ async def get_client_summary(
     try:
         team_uuid = UUID(team_id) if team_id else None
         
-        # Validate access
         if current_user.role == UserRole.SUB_ADMIN:
             if team_uuid and team_uuid != current_user.team_id:
                 raise HTTPException(
@@ -430,9 +509,7 @@ async def get_cash_flow_projection(
     team_id: Optional[str] = Query(None, description="Filter by team ID"),
     receivable_service: ReceivableService = Depends(get_receivable_service)
 ):
-    """
-    Get projected cash flow based on expected payment dates.
-    """
+    """Get projected cash flow based on expected payment dates."""
     if current_user.role == UserRole.MEMBER:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -442,7 +519,6 @@ async def get_cash_flow_projection(
     try:
         team_uuid = UUID(team_id) if team_id else None
         
-        # Validate access
         if current_user.role == UserRole.SUB_ADMIN:
             if team_uuid and team_uuid != current_user.team_id:
                 raise HTTPException(
@@ -522,7 +598,9 @@ async def get_receivables_dashboard_summary(
                 contract_value=r.contract_value,
                 status=r.status,
                 expected_payment_date=r.expected_payment_date,
-                is_overdue=r.expected_payment_date < date.today()
+                is_overdue=r.derived.is_overdue,
+                payment_type=r.payment_type,
+                module_name=r.module.module_name if r.module else None
             ) for r in overdue[:5]  # Top 5 overdue
         ],
         "recent_receivables": [
@@ -533,7 +611,9 @@ async def get_receivables_dashboard_summary(
                 contract_value=r.contract_value,
                 status=r.status,
                 expected_payment_date=r.expected_payment_date,
-                is_overdue=r.expected_payment_date < date.today()
+                is_overdue=r.derived.is_overdue,
+                payment_type=r.payment_type,
+                module_name=r.module.module_name if r.module else None
             ) for r in recent_result.items
         ]
     }

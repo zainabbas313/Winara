@@ -3,22 +3,45 @@ from typing import Optional, List, Dict, Any
 from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
-from models.models import ReceivableStatus
+from models.models import ReceivableStatus, PaymentType, ModuleStatus
 
 
 class ReceivableBase(BaseModel):
     """Base receivable schema with common fields."""
-    client_name: str = Field(..., min_length=1, max_length=200)
-    project_title: str = Field(..., min_length=1, max_length=500)
     contract_value: Decimal = Field(..., gt=0)
     expected_payment_date: date
     currency: str = Field(default="USD", min_length=3, max_length=3)
 
 
+class ProjectModuleCreate(BaseModel):
+    """Schema for creating a project module."""
+    module_name: str = Field(..., min_length=1, max_length=500)
+    description: Optional[str] = None
+    module_amount: Decimal = Field(..., gt=0)
+    order_sequence: int = Field(default=1, ge=1)
+
+
+class ProjectModuleResponse(BaseModel):
+    """Response schema for project module."""
+    id: UUID
+    bid_id: UUID
+    module_name: str
+    description: Optional[str]
+    module_amount: Decimal
+    order_sequence: int
+    status: ModuleStatus
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True
+
+
 class ReceivableCreate(ReceivableBase):
     """Schema for creating a new receivable."""
     bid_id: UUID
-    team_id: UUID
+    module_id: Optional[UUID] = None  # For module-based payments
+    payment_type: PaymentType = PaymentType.SINGLE
 
     @validator('expected_payment_date')
     def validate_payment_date(cls, v):
@@ -28,16 +51,35 @@ class ReceivableCreate(ReceivableBase):
 
     @validator('currency')
     def validate_currency(cls, v):
-        # Basic currency code validation
         if not v.isupper() or len(v) != 3:
             raise ValueError('Currency must be a valid 3-letter code in uppercase')
+        return v
+
+    @validator('module_id')
+    def validate_module_consistency(cls, v, values):
+        payment_type = values.get('payment_type')
+        if payment_type == PaymentType.MODULE_BASED and v is None:
+            raise ValueError('module_id is required for module-based payments')
+        if payment_type == PaymentType.SINGLE and v is not None:
+            raise ValueError('module_id should be null for single payments')
+        return v
+
+
+class BulkReceivableCreate(BaseModel):
+    """Schema for creating receivables for a bid with modules."""
+    bid_id: UUID
+    modules: List[ProjectModuleCreate]
+    currency: str = Field(default="USD", min_length=3, max_length=3)
+
+    @validator('modules')
+    def validate_modules(cls, v):
+        if not v or len(v) == 0:
+            raise ValueError('At least one module is required')
         return v
 
 
 class ReceivableUpdate(BaseModel):
     """Schema for updating a receivable."""
-    client_name: Optional[str] = Field(None, min_length=1, max_length=200)
-    project_title: Optional[str] = Field(None, min_length=1, max_length=500)
     contract_value: Optional[Decimal] = Field(None, gt=0)
     expected_payment_date: Optional[date] = None
     actual_payment_date: Optional[date] = None
@@ -83,7 +125,6 @@ class ReceivableStatusUpdate(BaseModel):
     def validate_actual_payment_date(cls, v, values):
         status = values.get('status')
         if status == ReceivableStatus.PAID and v is None:
-            # Default to today if not provided
             return date.today()
         if v is not None and v > date.today():
             raise ValueError('Actual payment date cannot be in the future')
@@ -102,14 +143,20 @@ class ReceivableResponse(ReceivableBase):
     """Response schema for receivable data."""
     id: UUID
     bid_id: UUID
-    team_id: UUID
+    module_id: Optional[UUID] = None
     actual_payment_date: Optional[date] = None
     payment_amount: Optional[Decimal] = None
     status: ReceivableStatus
+    payment_type: PaymentType
     created_at: datetime
     updated_at: Optional[datetime] = None
     created_by_id: Optional[UUID] = None
     derived: ReceivableDerived
+    
+    # Related data
+    module: Optional[ProjectModuleResponse] = None
+    client_name: Optional[str] = None  # From bid
+    project_title: Optional[str] = None  # From bid or module
 
     class Config:
         from_attributes = True
@@ -124,6 +171,8 @@ class ReceivableSummary(BaseModel):
     status: ReceivableStatus
     expected_payment_date: date
     is_overdue: bool
+    payment_type: PaymentType
+    module_name: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -133,9 +182,11 @@ class ReceivableListFilter(BaseModel):
     """Filters for receivable listing."""
     team_id: Optional[UUID] = None
     status: Optional[ReceivableStatus] = None
+    payment_type: Optional[PaymentType] = None
     date_from: Optional[date] = None
     date_to: Optional[date] = None
     client_name: Optional[str] = None
+    module_id: Optional[UUID] = None
 
     @validator('date_to')
     def validate_date_range(cls, v, values):
@@ -157,6 +208,7 @@ class ReceivableStats(BaseModel):
     avg_payment_days: Optional[Decimal]
     collection_rate: Decimal
     by_status: List[Dict[str, Any]]
+    by_payment_type: List[Dict[str, Any]]
     by_currency: List[Dict[str, Any]]
     current_month_value: Decimal
     next_month_value: Decimal
@@ -197,3 +249,17 @@ class ReceivableCashFlow(BaseModel):
     date: str
     daily_amount: float
     cumulative_amount: float
+
+
+class BidReceivableResponse(BaseModel):
+    """Response for bid with its receivables."""
+    bid_id: UUID
+    job_title: str
+    client_name: str
+    has_modules: bool
+    total_contract_value: Decimal
+    receivables: List[ReceivableResponse]
+    modules: List[ProjectModuleResponse]
+
+    class Config:
+        from_attributes = True

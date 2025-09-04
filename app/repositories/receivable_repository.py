@@ -1,5 +1,3 @@
-# Update your receivable_repository.py with this modified version
-
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 from datetime import datetime, date, timedelta
@@ -7,11 +5,11 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func, desc, case
 from decimal import Decimal
 from .base_repository import BaseRepository
-from models.models import Receivable, ReceivableStatus, Bid, Team
-from schemas.receivable import ReceivableCreate, ReceivableUpdate, ReceivableListFilter
+from models.models import Receivable, ReceivableStatus, Bid, Team, ProjectModule, BidStatus, PaymentType, ModuleStatus
+from schemas.receivable import ReceivableCreate, ReceivableUpdate, ReceivableListFilter, ProjectModuleCreate
 from schemas.common import PaginatedResponse
 from interface.Irepositories.receivable_repository import IReceivableRepository
-from utils.sort_values import _apply_sorting_generic, _apply_receivable_filters
+from utils.receivables_sort_values import _apply_sorting_generic, _apply_receivable_filters
 import logging
 
 logger = logging.getLogger(__name__)
@@ -31,30 +29,107 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
             logger.error(f"Error creating receivable: {e}")
             raise
 
+    def create_module(self, db: Session, bid_id: UUID, module_data: ProjectModuleCreate) -> ProjectModule:
+        """Create a new project module."""
+        try:
+            module_dict = module_data.dict()
+            module_dict['bid_id'] = bid_id
+            
+            module = ProjectModule(**module_dict)
+            db.add(module)
+            db.commit()
+            db.refresh(module)
+            return module
+        except Exception as e:
+            logger.error(f"Error creating module: {e}")
+            db.rollback()
+            raise
+
+    def create_bulk_modules_and_receivables(self, db: Session, bid_id: UUID, modules_data: List[ProjectModuleCreate], 
+                                          created_by_id: UUID, currency: str = "USD") -> List[Receivable]:
+        """Create multiple modules and their corresponding receivables."""
+        try:
+            receivables = []
+            
+            # First, update bid to indicate it has modules
+            bid = db.query(Bid).filter(Bid.id == bid_id).first()
+            if bid:
+                bid.has_modules = True
+                db.commit()
+            
+            for module_data in modules_data:
+                # Create module
+                module = self.create_module(db, bid_id, module_data)
+                
+                # Create receivable for this module
+                receivable_data = ReceivableCreate(
+                    bid_id=bid_id,
+                    module_id=module.id,
+                    contract_value=module_data.module_amount,
+                    expected_payment_date=module_data.expected_payment_date if hasattr(module_data, 'expected_payment_date') else date.today() + timedelta(days=30),
+                    payment_type=PaymentType.MODULE_BASED,
+                    currency=currency
+                )
+                
+                receivable = self.create(db, receivable_data, created_by_id)
+                receivables.append(receivable)
+            
+            return receivables
+        except Exception as e:
+            logger.error(f"Error creating bulk modules and receivables: {e}")
+            db.rollback()
+            raise
+
     def get_by_id(self, db: Session, receivable_id: UUID) -> Optional[Receivable]:
         """Get receivable by ID with related data."""
         try:
-            return db.query(Receivable).options(
+            receivable = db.query(Receivable).options(
                 joinedload(Receivable.bid),
-                joinedload(Receivable.team),
+                joinedload(Receivable.module),
                 joinedload(Receivable.created_by)
             ).filter(Receivable.id == receivable_id).first()
+            
+            if receivable:
+                receivable = self._enrich_receivable_with_derived_fields(receivable)
+            
+            return receivable
         except Exception as e:
             logger.error(f"Error getting receivable {receivable_id}: {e}")
             return None
 
-    def get_by_bid(self, db: Session, bid_id: UUID) -> Optional[Receivable]:
-        """Get receivable by bid ID."""
+    def get_by_bid(self, db: Session, bid_id: UUID) -> List[Receivable]:
+        """Get all receivables for a bid."""
         try:
-            return db.query(Receivable).filter(Receivable.bid_id == bid_id).first()
+            receivables = db.query(Receivable).options(
+                joinedload(Receivable.bid),
+                joinedload(Receivable.module),
+                joinedload(Receivable.created_by)
+            ).filter(Receivable.bid_id == bid_id).all()
+            
+            return self._enrich_receivables_with_derived_fields(receivables)
         except Exception as e:
-            logger.error(f"Error getting receivable by bid {bid_id}: {e}")
+            logger.error(f"Error getting receivables by bid {bid_id}: {e}")
+            return []
+
+    def get_by_module(self, db: Session, module_id: UUID) -> Optional[Receivable]:
+        """Get receivable by module ID."""
+        try:
+            receivable = db.query(Receivable).options(
+                joinedload(Receivable.bid),
+                joinedload(Receivable.module),
+                joinedload(Receivable.created_by)
+            ).filter(Receivable.module_id == module_id).first()
+            
+            if receivable:
+                receivable = self._enrich_receivable_with_derived_fields(receivable)
+            
+            return receivable
+        except Exception as e:
+            logger.error(f"Error getting receivable by module {module_id}: {e}")
             return None
 
     def _calculate_derived_fields(self, receivable: Receivable) -> Dict[str, Any]:
         """Calculate derived fields for receivable."""
-        from datetime import date
-        
         today = date.today()
         expected_date = receivable.expected_payment_date
         
@@ -97,36 +172,18 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
         """Add derived fields to list of receivables."""
         return [self._enrich_receivable_with_derived_fields(r) for r in receivables]
 
-    # Update these existing methods to include derived fields:
-
-    def get_by_id(self, db: Session, receivable_id: UUID) -> Optional[Receivable]:
-        """Get receivable by ID with related data."""
-        try:
-            receivable = db.query(Receivable).options(
-                joinedload(Receivable.bid),
-                joinedload(Receivable.team),
-                joinedload(Receivable.created_by)
-            ).filter(Receivable.id == receivable_id).first()
-            
-            if receivable:
-                receivable = self._enrich_receivable_with_derived_fields(receivable)
-            
-            return receivable
-        except Exception as e:
-            logger.error(f"Error getting receivable {receivable_id}: {e}")
-            return None
-
     def get_all(self, db: Session, filters: ReceivableListFilter, skip: int = 0, 
                 limit: int = 20, sort_by: str = "-created_at") -> PaginatedResponse:
         """Get all receivables with filters and pagination."""
         try:
             query = db.query(Receivable).options(
                 joinedload(Receivable.bid),
-                joinedload(Receivable.team)
+                joinedload(Receivable.module),
+                joinedload(Receivable.created_by)
             )
             
-            # Apply filters using the utility function
-            query = _apply_receivable_filters(query, filters)
+            # Apply filters
+            query = self._apply_receivable_filters(query, filters)
             
             # Get total count before pagination
             total_count = query.count()
@@ -157,6 +214,34 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
                 next_cursor=None, 
                 count=0
             )
+
+    def _apply_receivable_filters(self, query, filters: ReceivableListFilter):
+        """Apply filters to receivable query."""
+        if filters.team_id:
+            query = query.join(Receivable.bid).filter(Bid.team_id == filters.team_id)
+        
+        if filters.status:
+            query = query.filter(Receivable.status == filters.status)
+        
+        if filters.payment_type:
+            query = query.filter(Receivable.payment_type == filters.payment_type)
+        
+        if filters.date_from:
+            query = query.filter(Receivable.expected_payment_date >= filters.date_from)
+        
+        if filters.date_to:
+            query = query.filter(Receivable.expected_payment_date <= filters.date_to)
+        
+        if filters.client_name:
+            query = query.join(Receivable.bid).filter(
+                Bid.client_name.ilike(f"%{filters.client_name}%")
+            )
+        
+        if filters.module_id:
+            query = query.filter(Receivable.module_id == filters.module_id)
+        
+        return query
+
     def get_by_team(self, db: Session, team_id: UUID, filters: ReceivableListFilter,
                    skip: int = 0, limit: int = 20) -> PaginatedResponse:
         """Get receivables by team with filters."""
@@ -190,10 +275,18 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
                 return None
             
             receivable.status = status
+            
+            # Also update module status if it's a module-based payment
+            if receivable.module:
+                if status == ReceivableStatus.PAID:
+                    receivable.module.status = ModuleStatus.PAID
+                elif status == ReceivableStatus.PARTIAL:
+                    receivable.module.status = ModuleStatus.IN_PROGRESS
+            
             db.commit()
             db.refresh(receivable)
             
-            return receivable
+            return self._enrich_receivable_with_derived_fields(receivable)
         except Exception as e:
             logger.error(f"Error updating receivable status {receivable_id}: {e}")
             db.rollback()
@@ -207,7 +300,11 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
         """Get overdue receivables."""
         try:
             today = date.today()
-            query = db.query(Receivable).filter(
+            query = db.query(Receivable).options(
+                joinedload(Receivable.bid),
+                joinedload(Receivable.module),
+                joinedload(Receivable.created_by)
+            ).filter(
                 and_(
                     Receivable.expected_payment_date < today,
                     Receivable.status.in_([ReceivableStatus.PENDING, ReceivableStatus.PARTIAL])
@@ -215,9 +312,10 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
             )
             
             if team_id:
-                query = query.filter(Receivable.team_id == team_id)
+                query = query.join(Receivable.bid).filter(Bid.team_id == team_id)
             
-            return query.all()
+            receivables = query.all()
+            return self._enrich_receivables_with_derived_fields(receivables)
         except Exception as e:
             logger.error(f"Error getting overdue receivables: {e}")
             return []
@@ -225,9 +323,9 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
     def get_statistics(self, db: Session, team_id: Optional[UUID] = None) -> Dict[str, Any]:
         """Get receivable statistics."""
         try:
-            query = db.query(Receivable)
+            query = db.query(Receivable).join(Receivable.bid)
             if team_id:
-                query = query.filter(Receivable.team_id == team_id)
+                query = query.filter(Bid.team_id == team_id)
             
             # Get basic counts and totals
             stats = db.query(
@@ -251,10 +349,10 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
                         else_=0
                     )
                 ).label('partial_value')
-            )
+            ).select_from(Receivable).join(Bid)
             
             if team_id:
-                stats = stats.filter(Receivable.team_id == team_id)
+                stats = stats.filter(Bid.team_id == team_id)
             
             result = stats.first()
             
@@ -277,6 +375,13 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
                 func.count(Receivable.id).label('count'),
                 func.sum(Receivable.contract_value).label('value')
             ).group_by(Receivable.status).all()
+            
+            # Get payment type breakdown
+            payment_type_breakdown = query.with_entities(
+                Receivable.payment_type,
+                func.count(Receivable.id).label('count'),
+                func.sum(Receivable.contract_value).label('value')
+            ).group_by(Receivable.payment_type).all()
             
             # Get currency breakdown
             currency_breakdown = query.with_entities(
@@ -359,6 +464,14 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
                     }
                     for breakdown in status_breakdown
                 ],
+                'by_payment_type': [
+                    {
+                        'payment_type': breakdown.payment_type.value,
+                        'count': breakdown.count,
+                        'value': breakdown.value or Decimal('0')
+                    }
+                    for breakdown in payment_type_breakdown
+                ],
                 'by_currency': [
                     {
                         'currency': breakdown.currency,
@@ -374,6 +487,7 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
         except Exception as e:
             logger.error(f"Error getting receivable statistics: {e}")
             return {}
+
     def get_team_statistics(self, db: Session, team_id: UUID) -> Dict[str, Any]:
         """Get team receivable statistics."""
         return self.get_statistics(db, team_id)
@@ -389,7 +503,7 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
             else:
                 end_date = date(year, month + 1, 1) - timedelta(days=1)
             
-            query = db.query(Receivable).filter(
+            query = db.query(Receivable).join(Receivable.bid).filter(
                 and_(
                     Receivable.expected_payment_date >= start_date,
                     Receivable.expected_payment_date <= end_date
@@ -397,7 +511,7 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
             )
             
             if team_id:
-                query = query.filter(Receivable.team_id == team_id)
+                query = query.filter(Bid.team_id == team_id)
             
             # Get summary statistics
             summary = query.with_entities(
@@ -479,12 +593,34 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
                         else_=0
                     )
                 ).label('paid_value')
-            ).filter(Receivable.expected_payment_date >= start_date)
+            ).select_from(Receivable).join(Bid).filter(
+                Receivable.expected_payment_date >= start_date
+            )
             
             if team_id:
-                query = query.filter(Receivable.team_id == team_id)
+                query = query.filter(Bid.team_id == team_id)
             
-            results = query.group_by(func.date(Receivable.expected_payment_date)).all()
+            results = query.group_by(func.date(Receivable.expected_payment_date)).order_by(
+                func.date(Receivable.expected_payment_date)
+            ).all()
+            
+            # Create running total for cash flow projection
+            cash_flow = []
+            running_total = Decimal('0')
+            
+            for result in results:
+                running_total += result.expected_amount or Decimal('0')
+                cash_flow.append({
+                    'date': result.date.isoformat(),
+                    'daily_amount': float(result.expected_amount or 0),
+                    'cumulative_amount': float(running_total)
+                })
+            
+            return cash_flow
+            
+        except Exception as e:
+            logger.error(f"Error calculating cash flow: {e}")
+            result = query.group_by(func.date(Receivable.expected_payment_date)).all()
             
             return [
                 {
@@ -506,7 +642,7 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
         """Get summary by client."""
         try:
             query = db.query(
-                Receivable.client_name,
+                Bid.client_name,
                 func.count(Receivable.id).label('total_receivables'),
                 func.sum(Receivable.contract_value).label('total_value'),
                 func.sum(
@@ -521,12 +657,12 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
                         else_=None
                     )
                 ).label('overdue_count')
-            )
+            ).select_from(Receivable).join(Bid)
             
             if team_id:
-                query = query.filter(Receivable.team_id == team_id)
+                query = query.filter(Bid.team_id == team_id)
             
-            results = query.group_by(Receivable.client_name).order_by(
+            results = query.group_by(Bid.client_name).order_by(
                 desc(func.sum(Receivable.contract_value))
             ).all()
             
@@ -545,8 +681,9 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
         except Exception as e:
             logger.error(f"Error getting client summary: {e}")
             return []
+        
     def calculate_cash_flow(self, db: Session, team_id: Optional[UUID] = None,
-                           days_ahead: int = 90) -> List[Dict[str, Any]]:
+                        days_ahead: int = 90) -> List[Dict[str, Any]]:
         """Calculate projected cash flow."""
         try:
             start_date = date.today()
@@ -555,7 +692,7 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
             query = db.query(
                 func.date(Receivable.expected_payment_date).label('date'),
                 func.sum(Receivable.contract_value).label('expected_amount')
-            ).filter(
+            ).select_from(Receivable).join(Bid).filter(
                 and_(
                     Receivable.expected_payment_date >= start_date,
                     Receivable.expected_payment_date <= end_date,
@@ -564,7 +701,7 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
             )
             
             if team_id:
-                query = query.filter(Receivable.team_id == team_id)
+                query = query.filter(Bid.team_id == team_id)
             
             results = query.group_by(func.date(Receivable.expected_payment_date)).order_by(
                 func.date(Receivable.expected_payment_date)
@@ -587,3 +724,4 @@ class ReceivableRepository(BaseRepository[Receivable], IReceivableRepository):
         except Exception as e:
             logger.error(f"Error calculating cash flow: {e}")
             return []
+    
