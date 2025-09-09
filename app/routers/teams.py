@@ -489,82 +489,82 @@ async def get_team_members(
 
 
 # Team statistics and performance
-@router.get("/teams/{team_id}/statistics", response_model=dict)
-async def get_team_statistics(
-    team_id: UUID,
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    team_service: TeamService = Depends(get_team_service)
-):
-    """
-    Get team statistics and performance metrics.
+# @router.get("/teams/{team_id}/statistics", response_model=dict)
+# async def get_team_statistics(
+#     team_id: UUID,
+#     current_user: CurrentUser,
+#     db: DatabaseSession,
+#     team_service: TeamService = Depends(get_team_service)
+# ):
+#     """
+#     Get team statistics and performance metrics.
     
-    Access control:
-    - Admin: Can see statistics for any team
-    - Sub-Admin: Can see statistics for their own team
-    - Member: Cannot access this endpoint
-    """
-    if current_user.role == UserRole.MEMBER:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions"
-        )
+#     Access control:
+#     - Admin: Can see statistics for any team
+#     - Sub-Admin: Can see statistics for their own team
+#     - Member: Cannot access this endpoint
+#     """
+#     if current_user.role == UserRole.MEMBER:
+#         raise HTTPException(
+#             status_code=status.HTTP_403_FORBIDDEN,
+#             detail="Insufficient permissions"
+#         )
     
-    try:
-        # team_uuid = UUID(team_id)
+#     try:
+#         # team_uuid = UUID(team_id)
         
-        # Validate access
-        if (current_user.role == UserRole.SUB_ADMIN and 
-            current_user.team_id != team_id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Can only access your own team statistics"
-            )
+#         # Validate access
+#         if (current_user.role == UserRole.SUB_ADMIN and 
+#             current_user.team_id != team_id):
+#             raise HTTPException(
+#                 status_code=status.HTTP_403_FORBIDDEN,
+#                 detail="Can only access your own team statistics"
+#             )
         
-        return team_service.get_team_statistics(db, team_id)
+#         return team_service.get_team_statistics(db, team_id)
         
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid team ID format"
-        )
+#     except ValueError:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Invalid team ID format"
+#         )
 
 
-@router.get("/teams/{team_id}/performance", response_model=dict)
-async def get_team_performance(
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    team_id: str,
-    days: int = Query(30, ge=1, le=365, description="Number of days for performance analysis"),
-    team_service: TeamService = Depends(get_team_service)
-):
-    """
-    Get team performance trends over specified period.
-    """
-    if current_user.role == UserRole.MEMBER:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions"
-        )
+# @router.get("/teams/{team_id}/performance", response_model=dict)
+# async def get_team_performance(
+#     current_user: CurrentUser,
+#     db: DatabaseSession,
+#     team_id: str,
+#     days: int = Query(30, ge=1, le=365, description="Number of days for performance analysis"),
+#     team_service: TeamService = Depends(get_team_service)
+# ):
+#     """
+#     Get team performance trends over specified period.
+#     """
+#     if current_user.role == UserRole.MEMBER:
+#         raise HTTPException(
+#             status_code=status.HTTP_403_FORBIDDEN,
+#             detail="Insufficient permissions"
+#         )
     
-    try:
-        team_uuid = UUID(team_id)
+#     try:
+#         team_uuid = UUID(team_id)
         
-        # Validate access
-        if (current_user.role == UserRole.SUB_ADMIN and 
-            current_user.team_id != team_uuid):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Can only access your own team performance"
-            )
+#         # Validate access
+#         if (current_user.role == UserRole.SUB_ADMIN and 
+#             current_user.team_id != team_uuid):
+#             raise HTTPException(
+#                 status_code=status.HTTP_403_FORBIDDEN,
+#                 detail="Can only access your own team performance"
+#             )
         
-        return team_service.get_team_performance(db, team_uuid, days)
+#         return team_service.get_team_performance(db, team_uuid, days)
         
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid team ID format"
-        )
+#     except ValueError:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Invalid team ID format"
+#         )
 
 
 # Utility endpoints
@@ -622,48 +622,48 @@ async def update_team_statistics(
 #             detail="Invalid team ID format"
 #         )
 
-@router.post("/teams/{team_id}/members/bulk", response_model=BulkAddUsersResponse)
-async def bulk_add_users_to_team(
-    team_id: str,
-    users_data: BulkAddUsersRequest,
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    team_service: TeamService = Depends(get_team_service)
-):
-    """
-    Bulk add users to team.
+# @router.post("/teams/{team_id}/members/bulk", response_model=BulkAddUsersResponse)
+# async def bulk_add_users_to_team(
+#     team_id: str,
+#     users_data: BulkAddUsersRequest,
+#     current_user: CurrentUser,
+#     db: DatabaseSession,
+#     team_service: TeamService = Depends(get_team_service)
+# ):
+#     """
+#     Bulk add users to team.
     
-    Access control:
-    - Admin: Can add users to any team
-    - Sub-Admin: Can add users to their own team only
-    - Member: Cannot access this endpoint
-    """
-    if current_user.role == UserRole.MEMBER:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions"
-        )
+#     Access control:
+#     - Admin: Can add users to any team
+#     - Sub-Admin: Can add users to their own team only
+#     - Member: Cannot access this endpoint
+#     """
+#     if current_user.role == UserRole.MEMBER:
+#         raise HTTPException(
+#             status_code=status.HTTP_403_FORBIDDEN,
+#             detail="Insufficient permissions"
+#         )
     
-    try:
-        team_uuid = UUID(team_id)
+#     try:
+#         team_uuid = UUID(team_id)
         
-        # Validate access
-        if (current_user.role == UserRole.SUB_ADMIN and 
-            current_user.team_id != team_uuid):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Can only add users to your own team"
-            )
+#         # Validate access
+#         if (current_user.role == UserRole.SUB_ADMIN and 
+#             current_user.team_id != team_uuid):
+#             raise HTTPException(
+#                 status_code=status.HTTP_403_FORBIDDEN,
+#                 detail="Can only add users to your own team"
+#             )
         
-        return team_service.bulk_add_users_to_team(
-            db, team_uuid, users_data, current_user.id
-        )
+#         return team_service.bulk_add_users_to_team(
+#             db, team_uuid, users_data, current_user.id
+#         )
         
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid team ID format"
-        )
+#     except ValueError:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Invalid team ID format"
+#         )
 
 
 @router.get("/teams/{team_id}/available-users", response_model=List[UserResponse])

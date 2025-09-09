@@ -184,68 +184,68 @@ async def generate_report(
         )
 
 
-@router.post("/export", response_model=ExportResponse)
-@rate_limit(calls=20, period=3600)  # 20 exports per hour
-async def export_analytics(
-    export_request: ExportRequest,
-    background_tasks: BackgroundTasks,
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    analytics_service: AnalyticsService = Depends(get_analytics_service)
-):
-    """
-    Export analytics data in various formats.
+# @router.post("/export", response_model=ExportResponse)
+# @rate_limit(calls=20, period=3600)  # 20 exports per hour
+# async def export_analytics(
+#     export_request: ExportRequest,
+#     background_tasks: BackgroundTasks,
+#     current_user: CurrentUser,
+#     db: DatabaseSession,
+#     analytics_service: AnalyticsService = Depends(get_analytics_service)
+# ):
+#     """
+#     Export analytics data in various formats.
     
-    **Export Formats:**
-    - **csv**: Comma-separated values
-    - **xlsx**: Microsoft Excel format
-    - **pdf**: Portable Document Format
-    - **json**: JavaScript Object Notation
+#     **Export Formats:**
+#     - **csv**: Comma-separated values
+#     - **xlsx**: Microsoft Excel format
+#     - **pdf**: Portable Document Format
+#     - **json**: JavaScript Object Notation
     
-    **Export Types:**
-    - **bid_performance**: Bid data and statistics
-    - **financial**: Financial reports and summaries
-    - **operational**: Operational metrics and KPIs
-    """
-    try:
-        # Validate export access
-        _validate_export_access(export_request, current_user)
+#     **Export Types:**
+#     - **bid_performance**: Bid data and statistics
+#     - **financial**: Financial reports and summaries
+#     - **operational**: Operational metrics and KPIs
+#     """
+#     try:
+#         # Validate export access
+#         _validate_export_access(export_request, current_user)
         
-        # Log export request
-        # background_tasks.add_task(
-        #     log_analytics_access,
-        #     user_id=current_user.id,
-        #     action="data_export",
-        #     type=export_request.type.value,
-        #     format=export_request.format.value
-        # )
+#         # Log export request
+#         # background_tasks.add_task(
+#         #     log_analytics_access,
+#         #     user_id=current_user.id,
+#         #     action="data_export",
+#         #     type=export_request.type.value,
+#         #     format=export_request.format.value
+#         # )
         
-        result = analytics_service.export_analytics(
-            db, export_request, current_user.id,
-            current_user.role, current_user.team_id
-        )
+#         result = analytics_service.export_analytics(
+#             db, export_request, current_user.id,
+#             current_user.role, current_user.team_id
+#         )
         
-        logger.info(f"Data exported for user {current_user.id}, type: {export_request.type}")
-        return result
+#         logger.info(f"Data exported for user {current_user.id}, type: {export_request.type}")
+#         return result
         
-    except ValidationError as e:
-        logger.error(f"Validation error in export: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-    except CustomPermissionError as e:
-        logger.warning(f"Permission denied for export: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=str(e)
-        )
-    except AnalyticsError as e:
-        logger.error(f"Analytics error in export: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to export data"
-        )
+#     except ValidationError as e:
+#         logger.error(f"Validation error in export: {e}")
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail=str(e)
+#         )
+#     except CustomPermissionError as e:
+#         logger.warning(f"Permission denied for export: {e}")
+#         raise HTTPException(
+#             status_code=status.HTTP_403_FORBIDDEN,
+#             detail=str(e)
+#         )
+#     except AnalyticsError as e:
+#         logger.error(f"Analytics error in export: {e}")
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail="Failed to export data"
+#         )
 
 
 # Detailed report endpoints
@@ -517,77 +517,39 @@ async def get_predictive_analytics(
         )
 
 
-@router.get("/download/{filename}")
-async def download_export_file(
-    filename: str,
-    current_user: CurrentUser,
-    db: DatabaseSession
-):
-    """
-    Download exported analytics file.
+# @router.get("/download/{filename}")
+# async def download_export_file(
+#     filename: str,
+#     current_user: CurrentUser,
+#     db: DatabaseSession
+# ):
+#     """
+#     Download exported analytics file.
     
-    This endpoint serves exported files with proper authentication
-    and access control. Files are automatically cleaned up after
-    24 hours for security.
-    """
-    try:
-        # In a real implementation, you would:
-        # 1. Validate file ownership
-        # 2. Check file existence and expiry
-        # 3. Stream file content
-        # 4. Log download activity
+#     This endpoint serves exported files with proper authentication
+#     and access control. Files are automatically cleaned up after
+#     24 hours for security.
+#     """
+#     try:
+#         # In a real implementation, you would:
+#         # 1. Validate file ownership
+#         # 2. Check file existence and expiry
+#         # 3. Stream file content
+#         # 4. Log download activity
         
-        # Placeholder implementation
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="File download functionality not yet implemented"
-        )
+#         # Placeholder implementation
+#         raise HTTPException(
+#             status_code=status.HTTP_501_NOT_IMPLEMENTED,
+#             detail="File download functionality not yet implemented"
+#         )
         
-    except Exception as e:
-        logger.error(f"Error downloading file {filename}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to download file"
-        )
+#     except Exception as e:
+#         logger.error(f"Error downloading file {filename}: {e}")
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail="Failed to download file"
+#         )
 
-
-@router.get("/health")
-async def analytics_health_check():
-    """
-    Health check endpoint for analytics service.
-    
-    Returns the status of analytics service components including:
-    - Database connectivity
-    - Cache availability
-    - Service response time
-    """
-    try:
-        analytics_service = get_analytics_service()
-        
-        # Check service health
-        health_status = {
-            "status": "healthy",
-            "timestamp": datetime.utcnow(),
-            "components": {
-                "analytics_service": "operational",
-                "database": "connected",
-                "cache": "available" if analytics_service.repository.redis_client else "unavailable"
-            }
-        }
-        
-        return APIResponse(
-            success=True,
-            message="Analytics service is healthy",
-            data=health_status
-        )
-        
-    except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        return APIResponse(
-            success=False,
-            message="Analytics service health check failed",
-            errors={"error": str(e)}
-        )
 
 
 # Helper functions for access validation

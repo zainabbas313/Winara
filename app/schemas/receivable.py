@@ -119,7 +119,7 @@ class ReceivableResponse(ReceivableBase):
     """Response schema for receivable data."""
     id: UUID
     bid_id: UUID
-    module_id: UUID  # Always present in new workflow
+    module_id: Optional[UUID] = None  # Always present in new workflow
     actual_payment_date: Optional[date] = None
     payment_amount: Optional[Decimal] = None
     status: ReceivableStatus
@@ -130,7 +130,7 @@ class ReceivableResponse(ReceivableBase):
     derived: ReceivableDerived
     
     # Related data
-    module: ProjectModuleResponse  # Always present since module_id is required
+    module: Optional[ProjectModuleResponse] = None   # Always present since module_id is required
     client_name: Optional[str] = None  # From bid
     project_title: Optional[str] = None  # From bid + module
 

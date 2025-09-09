@@ -160,18 +160,18 @@ async def get_bid_statistics(
 #         )
 
 
-@router.get("/bids/recent", response_model=List[BidResponse])
-async def get_recent_bids(
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    limit: int = Query(10, ge=1, le=50, description="Number of recent bids to return"),
-    bid_service: BidService = Depends(get_bid_service)
-):
-    """Get recent bids with role-based filtering."""
-    return bid_service.get_recent_bids(
-        db, current_user.id,
-        current_user.role, limit, current_user.team_id
-    )
+# @router.get("/bids/recent", response_model=List[BidResponse])
+# async def get_recent_bids(
+#     current_user: CurrentUser,
+#     db: DatabaseSession,
+#     limit: int = Query(10, ge=1, le=50, description="Number of recent bids to return"),
+#     bid_service: BidService = Depends(get_bid_service)
+# ):
+#     """Get recent bids with role-based filtering."""
+#     return bid_service.get_recent_bids(
+#         db, current_user.id,
+#         current_user.role, limit, current_user.team_id
+#     )
 
 
 @router.get("/bids/winning", response_model=PaginatedResponse[BidResponse])
@@ -503,90 +503,90 @@ async def get_monthly_trends(
         )
 
 
-@router.get("/bid-summary", response_model=DashboardSummary)
-async def get_dashboard_summary(
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    bid_service: BidService = Depends(get_bid_service)
-):
-    """Get bid summary for dashboard display."""
-    return bid_service.get_dashboard_summary(
-        db, current_user.id, current_user.role, current_user.team_id
-    )
+# @router.get("/bid-summary", response_model=DashboardSummary)
+# async def get_dashboard_summary(
+#     current_user: CurrentUser,
+#     db: DatabaseSession,
+#     bid_service: BidService = Depends(get_bid_service)
+# ):
+#     """Get bid summary for dashboard display."""
+#     return bid_service.get_dashboard_summary(
+#         db, current_user.id, current_user.role, current_user.team_id
+#     )
 
 
-@router.get("/top-performers", response_model=List[MemberBidRanking])
-async def get_top_performers(
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    team_id: Optional[str] = Query(None, description="Filter by team ID"),
-    limit: int = Query(5, ge=1, le=20, description="Number of top performers to return"),
-    bid_service: BidService = Depends(get_bid_service)
-):
-    """Get top performing members."""
-    if current_user.role == UserRole.MEMBER:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Members cannot access top performers list"
-        )
+# @router.get("/top-performers", response_model=List[MemberBidRanking])
+# async def get_top_performers(
+#     current_user: CurrentUser,
+#     db: DatabaseSession,
+#     team_id: Optional[str] = Query(None, description="Filter by team ID"),
+#     limit: int = Query(5, ge=1, le=20, description="Number of top performers to return"),
+#     bid_service: BidService = Depends(get_bid_service)
+# ):
+#     """Get top performing members."""
+#     if current_user.role == UserRole.MEMBER:
+#         raise HTTPException(
+#             status_code=status.HTTP_403_FORBIDDEN,
+#             detail="Members cannot access top performers list"
+#         )
     
-    try:
-        team_uuid = UUID(team_id) if team_id else None
-        return bid_service.get_top_performers(
-            db, team_uuid, limit, current_user.role, current_user.team_id
-        )
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid team ID format"
-        )
+#     try:
+#         team_uuid = UUID(team_id) if team_id else None
+#         return bid_service.get_top_performers(
+#             db, team_uuid, limit, current_user.role, current_user.team_id
+#         )
+#     except ValueError:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Invalid team ID format"
+#         )
 
 
 # =====================================================================
 # BULK OPERATIONS
 # =====================================================================
 
-@router.patch("/bids/bulk-status", response_model=List[BidResponse])
-async def bulk_update_bid_status(
-    bid_ids: List[str],
-    status: BidStatus,
-    current_user: CurrentSubAdminUser,
-    db: DatabaseSession,
-    bid_service: BidService = Depends(get_bid_service)
-):
-    """Bulk update bid status (Sub-Admin and Admin only)."""
-    try:
-        bid_uuids = [UUID(bid_id) for bid_id in bid_ids]
-        return bid_service.bulk_update_status(
-            db, bid_uuids, status, current_user.id,
-            current_user.role, current_user.team_id
-        )
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid bid ID format in list"
-        )
+# @router.patch("/bids/bulk-status", response_model=List[BidResponse])
+# async def bulk_update_bid_status(
+#     bid_ids: List[str],
+#     status: BidStatus,
+#     current_user: CurrentSubAdminUser,
+#     db: DatabaseSession,
+#     bid_service: BidService = Depends(get_bid_service)
+# ):
+#     """Bulk update bid status (Sub-Admin and Admin only)."""
+#     try:
+#         bid_uuids = [UUID(bid_id) for bid_id in bid_ids]
+#         return bid_service.bulk_update_status(
+#             db, bid_uuids, status, current_user.id,
+#             current_user.role, current_user.team_id
+#         )
+#     except ValueError:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Invalid bid ID format in list"
+#         )
 
 
-@router.delete("/bids/bulk", response_model=BulkOperationResult)
-async def bulk_delete_bids(
-    bid_ids: List[str],
-    current_user: CurrentSubAdminUser,
-    db: DatabaseSession,
-    bid_service: BidService = Depends(get_bid_service)
-):
-    """Bulk delete bids (Sub-Admin and Admin only)."""
-    try:
-        bid_uuids = [UUID(bid_id) for bid_id in bid_ids]
-        return bid_service.bulk_delete_bids(
-            db, bid_uuids, current_user.id,
-            current_user.role, current_user.team_id
-        )
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid bid ID format in list"
-        )
+# @router.delete("/bids/bulk", response_model=BulkOperationResult)
+# async def bulk_delete_bids(
+#     bid_ids: List[str],
+#     current_user: CurrentSubAdminUser,
+#     db: DatabaseSession,
+#     bid_service: BidService = Depends(get_bid_service)
+# ):
+#     """Bulk delete bids (Sub-Admin and Admin only)."""
+#     try:
+#         bid_uuids = [UUID(bid_id) for bid_id in bid_ids]
+#         return bid_service.bulk_delete_bids(
+#             db, bid_uuids, current_user.id,
+#             current_user.role, current_user.team_id
+#         )
+#     except ValueError:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Invalid bid ID format in list"
+#         )
 
 
 # @router.patch("/bids/bulk-assign-team", response_model=BulkOperationResult)

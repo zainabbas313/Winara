@@ -71,4 +71,4 @@ class IModuleService(ABC):
     def check_bid_status(self, db: Session, bid_id: UUID, user_id: UUID, user_role: str,
                         user_team_id: Optional[UUID] = None) -> BidStatusCheck:
         """Check bid status for module operations."""
-        pass
+        pass 

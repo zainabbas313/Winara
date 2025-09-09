@@ -411,63 +411,64 @@ async def mark_overdue_receivables(
     return {"marked_overdue": count, "message": f"Marked {count} receivables as overdue"}
 
 
-@router.get("/receivables/summary")
-async def get_receivables_dashboard_summary(
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    receivable_service: ReceivableService = Depends(get_receivable_service)
-):
-    """
-    Get receivables summary for dashboard display.
-    """
-    if current_user.role == UserRole.MEMBER:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions"
-        )
+# @router.get("/receivables/summary")
+# async def get_receivables_dashboard_summary(
+#     current_user: CurrentUser,
+#     db: DatabaseSession,
+#     receivable_service: ReceivableService = Depends(get_receivable_service)
+# ):
+#     """
+#     Get receivables summary for dashboard display.
+#     """
+#     if current_user.role == UserRole.MEMBER:
+#         raise HTTPException(
+#             status_code=status.HTTP_403_FORBIDDEN,
+#             detail="Insufficient permissions"
+#         )
     
-    team_id = current_user.team_id if current_user.role == UserRole.SUB_ADMIN else None
+#     team_id = current_user.team_id if current_user.role == UserRole.SUB_ADMIN else None
     
-    # Get statistics
-    stats = receivable_service.get_statistics(db, team_id)
+#     # Get statistics
+#     stats = receivable_service.get_statistics(db, team_id)
     
-    # Get overdue receivables
-    overdue = receivable_service.get_overdue_receivables(db, team_id)
+#     # Get overdue receivables
+#     overdue = receivable_service.get_overdue_receivables(db, team_id)
     
-    # Get recent receivables
-    recent_filters = ReceivableListFilter(team_id=team_id)
-    recent_result = receivable_service.get_receivables(
-        db, recent_filters, current_user.id, current_user.role, 
-        0, 5, "-created_at", current_user.team_id
-    )
+#     # Get recent receivables
+#     recent_filters = ReceivableListFilter(team_id=team_id)
+#     recent_result = receivable_service.get_receivables(
+#         db, recent_filters, current_user.id, current_user.role, 
+#         0, 5, "-created_at", current_user.team_id
+#     )
     
-    return {
-        "statistics": stats,
-        "overdue_count": len(overdue),
-        "overdue_receivables": [
-            ReceivableSummary(
-                id=r.id,
-                client_name=r.client_name,
-                project_title=r.project_title,
-                contract_value=r.contract_value,
-                status=r.status,
-                expected_payment_date=r.expected_payment_date,
-                is_overdue=r.derived.is_overdue,
-                payment_type=r.payment_type,
-                module_name=r.module.module_name if r.module else None
-            ) for r in overdue[:5]  # Top 5 overdue
-        ],
-        "recent_receivables": [
-            ReceivableSummary(
-                id=r.id,
-                client_name=r.client_name,
-                project_title=r.project_title,
-                contract_value=r.contract_value,
-                status=r.status,
-                expected_payment_date=r.expected_payment_date,
-                is_overdue=r.derived.is_overdue,
-                payment_type=r.payment_type,
-                module_name=r.module.module_name if r.module else None
-            ) for r in recent_result.items
-        ]
-    }
+#     return {
+#         "statistics": stats,
+#         "overdue_count": len(overdue),
+#         "overdue_receivables": [
+#             ReceivableSummary(
+#                 id=r.id,
+#                 client_name=r.client_name,
+#                 project_title=r.project_title,
+#                 contract_value=r.contract_value,
+#                 status=r.status,
+#                 expected_payment_date=r.expected_payment_date,
+#                 is_overdue=r.derived.is_overdue,
+#                 payment_type=r.payment_type,
+#                 module_name=r.module.module_name if r.module else None
+#             ) for r in overdue[:5]  # Top 5 overdue
+#         ],
+#         "recent_receivables": [
+#             ReceivableSummary(
+#                 id=r.id,
+#                 client_name=r.client_name,
+#                 project_title=r.project_title,
+#                 contract_value=r.contract_value,
+#                 status=r.status,
+#                 expected_payment_date=r.expected_payment_date,
+#                 is_overdue=r.derived.is_overdue,
+#                 payment_type=r.payment_type,
+#                 module_name=r.module.module_name if r.module else None
+#             ) for r in recent_result.items
+#         ]
+#     }
+

@@ -437,48 +437,48 @@ async def get_vertical_performance_trends(
         )
 
 
-@router.get("/analytics/top-performing", response_model=List[VerticalResponse])
-async def get_top_performing_verticals(
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    limit: int = Query(10, ge=1, le=50, description="Number of top verticals to return"),
-    vertical_service: VerticalService = Depends(get_vertical_service)
-):
-    """
-    Get top performing verticals by success rate.
+# @router.get("/analytics/top-performing", response_model=List[VerticalResponse])
+# async def get_top_performing_verticals(
+#     current_user: CurrentUser,
+#     db: DatabaseSession,
+#     limit: int = Query(10, ge=1, le=50, description="Number of top verticals to return"),
+#     vertical_service: VerticalService = Depends(get_vertical_service)
+# ):
+#     """
+#     Get top performing verticals by success rate.
     
-    Returns verticals ordered by success rate and total earnings.
-    """
-    try:
-        return vertical_service.get_top_performing(db, limit)
-    except Exception as e:
-        logger.error(f"Error in get_top_performing_verticals endpoint: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+#     Returns verticals ordered by success rate and total earnings.
+#     """
+#     try:
+#         return vertical_service.get_top_performing(db, limit)
+#     except Exception as e:
+#         logger.error(f"Error in get_top_performing_verticals endpoint: {str(e)}")
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail="Internal server error"
+#         )
 
 
-@router.get("/analytics/most-active", response_model=List[VerticalResponse])
-async def get_most_active_verticals(
-    current_user: CurrentUser,
-    db: DatabaseSession,
-    limit: int = Query(10, ge=1, le=50, description="Number of verticals to return"),
-    vertical_service: VerticalService = Depends(get_vertical_service)
-):
-    """
-    Get most active verticals by bid count.
+# @router.get("/analytics/most-active", response_model=List[VerticalResponse])
+# async def get_most_active_verticals(
+#     current_user: CurrentUser,
+#     db: DatabaseSession,
+#     limit: int = Query(10, ge=1, le=50, description="Number of verticals to return"),
+#     vertical_service: VerticalService = Depends(get_vertical_service)
+# ):
+#     """
+#     Get most active verticals by bid count.
     
-    Returns verticals ordered by total number of bids and earnings.
-    """
-    try:
-        return vertical_service.get_most_active(db, limit)
-    except Exception as e:
-        logger.error(f"Error in get_most_active_verticals endpoint: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+#     Returns verticals ordered by total number of bids and earnings.
+#     """
+#     try:
+#         return vertical_service.get_most_active(db, limit)
+#     except Exception as e:
+#         logger.error(f"Error in get_most_active_verticals endpoint: {str(e)}")
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail="Internal server error"
+#         )
 
 
 # @router.get("/analytics/summary", response_model=VerticalStats)
@@ -576,36 +576,36 @@ async def get_available_verticals_for_user(
 # ADMIN UTILITY OPERATIONS
 # ==========================================
 
-@router.post("/{vertical_id}/update-statistics", response_model=SuccessResponse)
-async def update_vertical_statistics(
-    vertical_id: str,
-    current_user: CurrentAdminUser,
-    db: DatabaseSession,
-    vertical_service: VerticalService = Depends(get_vertical_service)
-):
-    """
-    Manually update vertical statistics (Admin only).
+# @router.post("/{vertical_id}/update-statistics", response_model=SuccessResponse)
+# async def update_vertical_statistics(
+#     vertical_id: str,
+#     current_user: CurrentAdminUser,
+#     db: DatabaseSession,
+#     vertical_service: VerticalService = Depends(get_vertical_service)
+# ):
+#     """
+#     Manually update vertical statistics (Admin only).
     
-    Recalculates statistics from current bid data. Useful when data inconsistencies
-    are detected or after bulk data operations.
-    """
-    try:
-        vertical_uuid = UUID(vertical_id)
-        vertical_service.update_statistics(db, vertical_uuid)
-        return SuccessResponse(message="Vertical statistics updated successfully")
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid vertical ID format"
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in update_vertical_statistics endpoint: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
-        )
+#     Recalculates statistics from current bid data. Useful when data inconsistencies
+#     are detected or after bulk data operations.
+#     """
+#     try:
+#         vertical_uuid = UUID(vertical_id)
+#         vertical_service.update_statistics(db, vertical_uuid)
+#         return SuccessResponse(message="Vertical statistics updated successfully")
+#     except ValueError:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Invalid vertical ID format"
+#         )
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"Error in update_vertical_statistics endpoint: {str(e)}")
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail="Internal server error"
+#         )
 
 
 # @router.post("/{vertical_id}/update-sort-order", response_model=SuccessResponse)
