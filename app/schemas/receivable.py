@@ -13,14 +13,6 @@ class ReceivableBase(BaseModel):
     currency: str = Field(default="USD", min_length=3, max_length=3)
 
 
-class ProjectModuleCreate(BaseModel):
-    """Schema for creating a project module."""
-    module_name: str = Field(..., min_length=1, max_length=500)
-    description: Optional[str] = None
-    module_amount: Decimal = Field(..., gt=0)
-    order_sequence: int = Field(default=1, ge=1)
-
-
 class ProjectModuleResponse(BaseModel):
     """Response schema for project module."""
     id: UUID
@@ -40,8 +32,8 @@ class ProjectModuleResponse(BaseModel):
 class ReceivableCreate(ReceivableBase):
     """Schema for creating a new receivable."""
     bid_id: UUID
-    module_id: Optional[UUID] = None  # For module-based payments
-    payment_type: PaymentType = PaymentType.SINGLE
+    module_id: UUID  # Required in new workflow - must specify which module this receivable is for
+    payment_type: PaymentType = PaymentType.MODULE_BASED  # Default to module-based
 
     @validator('expected_payment_date')
     def validate_payment_date(cls, v):
@@ -56,25 +48,9 @@ class ReceivableCreate(ReceivableBase):
         return v
 
     @validator('module_id')
-    def validate_module_consistency(cls, v, values):
-        payment_type = values.get('payment_type')
-        if payment_type == PaymentType.MODULE_BASED and v is None:
-            raise ValueError('module_id is required for module-based payments')
-        if payment_type == PaymentType.SINGLE and v is not None:
-            raise ValueError('module_id should be null for single payments')
-        return v
-
-
-class BulkReceivableCreate(BaseModel):
-    """Schema for creating receivables for a bid with modules."""
-    bid_id: UUID
-    modules: List[ProjectModuleCreate]
-    currency: str = Field(default="USD", min_length=3, max_length=3)
-
-    @validator('modules')
-    def validate_modules(cls, v):
-        if not v or len(v) == 0:
-            raise ValueError('At least one module is required')
+    def validate_module_id(cls, v):
+        if v is None:
+            raise ValueError('module_id is required in the new workflow')
         return v
 
 
@@ -143,7 +119,7 @@ class ReceivableResponse(ReceivableBase):
     """Response schema for receivable data."""
     id: UUID
     bid_id: UUID
-    module_id: Optional[UUID] = None
+    module_id: UUID  # Always present in new workflow
     actual_payment_date: Optional[date] = None
     payment_amount: Optional[Decimal] = None
     status: ReceivableStatus
@@ -154,9 +130,9 @@ class ReceivableResponse(ReceivableBase):
     derived: ReceivableDerived
     
     # Related data
-    module: Optional[ProjectModuleResponse] = None
+    module: ProjectModuleResponse  # Always present since module_id is required
     client_name: Optional[str] = None  # From bid
-    project_title: Optional[str] = None  # From bid or module
+    project_title: Optional[str] = None  # From bid + module
 
     class Config:
         from_attributes = True
@@ -172,7 +148,7 @@ class ReceivableSummary(BaseModel):
     expected_payment_date: date
     is_overdue: bool
     payment_type: PaymentType
-    module_name: Optional[str] = None
+    module_name: str  # Always present since modules are required
 
     class Config:
         from_attributes = True
@@ -187,6 +163,7 @@ class ReceivableListFilter(BaseModel):
     date_to: Optional[date] = None
     client_name: Optional[str] = None
     module_id: Optional[UUID] = None
+    bid_id: Optional[UUID] = None  # Added for filtering by specific bid
 
     @validator('date_to')
     def validate_date_range(cls, v, values):
@@ -212,47 +189,12 @@ class ReceivableStats(BaseModel):
     by_currency: List[Dict[str, Any]]
     current_month_value: Decimal
     next_month_value: Decimal
-
-
-class ReceivableMonthlyStats(BaseModel):
-    """Monthly statistics schema."""
-    year: int
-    month: int
-    total_receivables: int
-    expected_value: Decimal
-    actual_received: Decimal
-    status_breakdown: List[Dict[str, Any]]
-
-
-class ReceivablePaymentTrend(BaseModel):
-    """Payment trend data point."""
-    date: str
-    expected_count: int
-    expected_value: float
-    paid_count: int
-    paid_value: float
-    payment_rate: float
-
-
-class ReceivableClientSummary(BaseModel):
-    """Client summary statistics."""
-    client_name: str
-    total_receivables: int
-    total_value: float
-    paid_value: float
-    overdue_count: int
-    payment_rate: float
-
-
-class ReceivableCashFlow(BaseModel):
-    """Cash flow projection data point."""
-    date: str
-    daily_amount: float
-    cumulative_amount: float
+    modules_with_receivables: int = 0  # New field
+    modules_without_receivables: int = 0  # New field
 
 
 class BidReceivableResponse(BaseModel):
-    """Response for bid with its receivables."""
+    """Response for bid with its receivables and modules."""
     bid_id: UUID
     job_title: str
     client_name: str
@@ -260,6 +202,42 @@ class BidReceivableResponse(BaseModel):
     total_contract_value: Decimal
     receivables: List[ReceivableResponse]
     modules: List[ProjectModuleResponse]
-
+    
+    # Workflow status indicators
+    modules_count: int = 0
+    receivables_count: int = 0
+    pending_modules: int = 0  # Modules without receivables
+    
     class Config:
         from_attributes = True
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        # Calculate derived fields
+        if 'modules' in data:
+            self.modules_count = len(data['modules'])
+        if 'receivables' in data:
+            self.receivables_count = len(data['receivables'])
+            # Calculate pending modules (modules without receivables)
+            if 'modules' in data:
+                module_ids_with_receivables = {r.module_id for r in data['receivables']}
+                module_ids = {m.id for m in data['modules']}
+                self.pending_modules = len(module_ids - module_ids_with_receivables)
+
+
+# Legacy schemas for backward compatibility (if needed)
+class LegacyReceivableCreate(ReceivableBase):
+    """Legacy schema for creating receivables without modules (deprecated)."""
+    bid_id: UUID
+    module_id: Optional[UUID] = None
+    payment_type: PaymentType = PaymentType.SINGLE
+
+    @validator('payment_type')
+    def validate_legacy_payment_type(cls, v, values):
+        # In legacy mode, warn about deprecation
+        import warnings
+        warnings.warn(
+            "Single payment type without modules is deprecated. Use module-based workflow.",
+            DeprecationWarning
+        )
+        return v

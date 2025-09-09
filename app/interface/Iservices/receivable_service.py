@@ -4,7 +4,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 from schemas.receivable import (
     ReceivableCreate, ReceivableUpdate, ReceivableResponse, ReceivableListFilter,
-    ReceivableStatusUpdate, ReceivableStats, BulkReceivableCreate, BidReceivableResponse
+    ReceivableStatusUpdate, ReceivableStats, BidReceivableResponse
 )
 from schemas.common import SuccessResponse, PaginatedResponse
 
@@ -15,19 +15,19 @@ class IReceivableService(ABC):
     @abstractmethod
     def create_receivable(self, db: Session, receivable_data: ReceivableCreate, 
                          created_by_id: UUID, user_role: str, user_team_id: Optional[UUID] = None) -> ReceivableResponse:
-        """Create a new receivable."""
-        pass
-    
-    @abstractmethod
-    def create_bulk_receivables(self, db: Session, bulk_data: BulkReceivableCreate,
-                               created_by_id: UUID, user_role: str, user_team_id: Optional[UUID] = None) -> List[ReceivableResponse]:
-        """Create receivables for all modules of a bid."""
+        """Create a new receivable for a module."""
         pass
     
     @abstractmethod
     def get_receivable(self, db: Session, receivable_id: UUID, user_id: UUID,
                       user_role: str, user_team_id: Optional[UUID] = None) -> Optional[ReceivableResponse]:
         """Get receivable by ID with access control."""
+        pass
+    
+    @abstractmethod
+    def get_module_receivable(self, db: Session, module_id: UUID, user_id: UUID,
+                             user_role: str, user_team_id: Optional[UUID] = None) -> Optional[ReceivableResponse]:
+        """Get receivable by module ID with access control."""
         pass
     
     @abstractmethod

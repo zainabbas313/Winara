@@ -251,7 +251,7 @@ async def get_user_verticals(
             detail="Invalid user ID format"
         )                                   
  
-@router.post("/users/{user_id}/verticals", response_model=List[UserVerticalResponse])
+@router.post("/users/verticals", response_model=List[UserVerticalResponse])
 async def assign_verticals_to_user(
     assignment_data: UserVerticalAssign,
     current_user: CurrentSubAdminUser,

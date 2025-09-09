@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, validator, HttpUrl
+from pydantic import BaseModel, Field, validator
 from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
@@ -9,7 +9,7 @@ from enum import Enum
 # Existing schemas (keeping the provided ones)
 class BidBase(BaseModel):
     job_title: str = Field(min_length=1, max_length=500)
-    job_url: Optional[HttpUrl] = None
+    job_url: Optional[str] = None
     job_description: Optional[str] = None
     client_name: Optional[str] = Field(None, max_length=200)
     budget_type: BudgetType

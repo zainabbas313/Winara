@@ -3,6 +3,7 @@ from .team_repository import ITeamRepository
 from .vertical_repository import IVerticalRepository
 from .bid_repository import IBidRepository
 from .receivable_repository import IReceivableRepository
+from .module_repository import IModuleRepository
 from .notification_repository import INotificationRepository
 from .audit_repository import IAuditRepository
 from .analytics_repository import IAnalyticsRepository

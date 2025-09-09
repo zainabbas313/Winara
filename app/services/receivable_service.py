@@ -6,7 +6,7 @@ from fastapi import HTTPException, status
 from models.models import Receivable, Bid, BidStatus, UserRole, ReceivableStatus, ProjectModule, PaymentType, ModuleStatus
 from schemas.receivable import (
     ReceivableCreate, ReceivableUpdate, ReceivableResponse, ReceivableListFilter,
-    ReceivableStatusUpdate, ReceivableStats, ReceivableDerived, BulkReceivableCreate,
+    ReceivableStatusUpdate, ReceivableStats, ReceivableDerived,
     BidReceivableResponse, ProjectModuleResponse
 )
 from schemas.common import SuccessResponse, PaginatedResponse
@@ -24,7 +24,7 @@ class ReceivableService(IReceivableService):
     
     def create_receivable(self, db: Session, receivable_data: ReceivableCreate, 
                          created_by_id: UUID, user_role: str, user_team_id: Optional[UUID] = None) -> ReceivableResponse:
-        """Create a new receivable."""
+        """Create a new receivable for a module."""
         try:
             # Validate bid exists and is won
             bid = db.query(Bid).filter(Bid.id == receivable_data.bid_id).first()
@@ -48,41 +48,41 @@ class ReceivableService(IReceivableService):
                         detail="Can only create receivables for your own team's bids"
                     )
             
-            # Validate module if module-based payment
-            if receivable_data.payment_type == PaymentType.MODULE_BASED:
-                if not receivable_data.module_id:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Module ID is required for module-based payments"
-                    )
-                
-                module = db.query(ProjectModule).filter(
-                    ProjectModule.id == receivable_data.module_id,
-                    ProjectModule.bid_id == receivable_data.bid_id
-                ).first()
-                
-                if not module:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Module not found or doesn't belong to this bid"
-                    )
-                
-                # Check if receivable already exists for this module
-                existing_receivable = self.repository.get_by_module(db, receivable_data.module_id)
-                if existing_receivable:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Receivable already exists for this module"
-                    )
+            # Validate module exists and belongs to the bid
+            if not receivable_data.module_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Module ID is required for receivable creation"
+                )
             
-            else:  # Single payment
-                # Check if any receivable already exists for this bid
-                existing_receivables = self.repository.get_by_bid(db, receivable_data.bid_id)
-                if existing_receivables:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Receivable already exists for this bid"
-                    )
+            module = db.query(ProjectModule).filter(
+                ProjectModule.id == receivable_data.module_id,
+                ProjectModule.bid_id == receivable_data.bid_id
+            ).first()
+            
+            if not module:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Module not found or doesn't belong to this bid"
+                )
+            
+            # Check if receivable already exists for this module
+            existing_receivable = self.repository.get_by_module(db, receivable_data.module_id)
+            if existing_receivable:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Receivable already exists for this module"
+                )
+            
+            # Set payment type to module-based since we're using modules
+            receivable_data.payment_type = PaymentType.MODULE_BASED
+            
+            # Validate contract value matches module amount
+            if receivable_data.contract_value != module.module_amount:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Contract value must match module amount"
+                )
             
             receivable = self.repository.create(db, receivable_data, created_by_id)
             return self._to_response(receivable)
@@ -96,60 +96,26 @@ class ReceivableService(IReceivableService):
                 detail="Internal server error while creating receivable"
             )
     
-    def create_bulk_receivables(self, db: Session, bulk_data: BulkReceivableCreate,
-                               created_by_id: UUID, user_role: str, user_team_id: Optional[UUID] = None) -> List[ReceivableResponse]:
-        """Create receivables for all modules of a bid."""
-        try:
-            # Validate bid exists and is won
-            bid = db.query(Bid).filter(Bid.id == bulk_data.bid_id).first()
-            if not bid:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Bid not found"
-                )
-            
-            if bid.status != BidStatus.WON:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Can only create receivables for won bids"
-                )
-            
-            # Validate team access
-            if user_role == UserRole.SUB_ADMIN.value:
-                if bid.team_id != user_team_id:
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="Can only create receivables for your own team's bids"
-                    )
-            
-            # Check if any receivables already exist for this bid
-            existing_receivables = self.repository.get_by_bid(db, bulk_data.bid_id)
-            if existing_receivables:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Receivables already exist for this bid"
-                )
-            
-            # Create modules and receivables
-            receivables = self.repository.create_bulk_modules_and_receivables(
-                db, bulk_data.bid_id, bulk_data.modules, created_by_id, bulk_data.currency
-            )
-            
-            return [self._to_response(receivable) for receivable in receivables]
-            
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Error creating bulk receivables: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Internal server error while creating bulk receivables"
-            )
-    
     def get_receivable(self, db: Session, receivable_id: UUID, user_id: UUID,
                       user_role: str, user_team_id: Optional[UUID] = None) -> Optional[ReceivableResponse]:
         """Get receivable by ID with access control."""
         receivable = self.repository.get_by_id(db, receivable_id)
+        if not receivable:
+            return None
+        
+        # Access control
+        if not self._has_access_to_receivable(receivable, user_role, user_team_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to this receivable"
+            )
+        
+        return self._to_response(receivable)
+    
+    def get_module_receivable(self, db: Session, module_id: UUID, user_id: UUID,
+                             user_role: str, user_team_id: Optional[UUID] = None) -> Optional[ReceivableResponse]:
+        """Get receivable by module ID with access control."""
+        receivable = self.repository.get_by_module(db, module_id)
         if not receivable:
             return None
         
@@ -301,6 +267,11 @@ class ReceivableService(IReceivableService):
                 payment_amount=status_data.payment_amount
             )
             
+            # Update associated module status if receivable is paid
+            if status_data.status == ReceivableStatus.PAID and receivable.module:
+                receivable.module.status = ModuleStatus.PAID
+                db.commit()
+            
             updated_receivable = self.repository.update(db, receivable_id, update_data)
             return self._to_response(updated_receivable) if updated_receivable else None
             
@@ -329,6 +300,13 @@ class ReceivableService(IReceivableService):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Access denied to this receivable"
+                )
+            
+            # Business rule: Can only delete unpaid receivables
+            if receivable.status == ReceivableStatus.PAID:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot delete paid receivables"
                 )
             
             success = self.repository.delete(db, receivable_id)
@@ -386,53 +364,6 @@ class ReceivableService(IReceivableService):
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Internal server error while getting statistics"
-            )
-    
-    def get_monthly_summary(self, db: Session, year: int, month: int, 
-                           team_id: Optional[UUID] = None) -> Dict[str, Any]:
-        """Get monthly receivables summary."""
-        try:
-            return self.repository.get_monthly_summary(db, year, month, team_id)
-        except Exception as e:
-            logger.error(f"Error getting monthly summary: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Internal server error while getting monthly summary"
-            )
-    
-    def get_payment_trends(self, db: Session, team_id: Optional[UUID] = None,
-                          days: int = 90) -> List[Dict[str, Any]]:
-        """Get payment trends over specified period."""
-        try:
-            return self.repository.get_payment_trends(db, team_id, days)
-        except Exception as e:
-            logger.error(f"Error getting payment trends: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Internal server error while getting payment trends"
-            )
-    
-    def get_client_summary(self, db: Session, team_id: Optional[UUID] = None) -> List[Dict[str, Any]]:
-        """Get summary statistics by client."""
-        try:
-            return self.repository.get_client_summary(db, team_id)
-        except Exception as e:
-            logger.error(f"Error getting client summary: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Internal server error while getting client summary"
-            )
-    
-    def calculate_cash_flow(self, db: Session, team_id: Optional[UUID] = None,
-                           days_ahead: int = 90) -> List[Dict[str, Any]]:
-        """Calculate projected cash flow based on expected payment dates."""
-        try:
-            return self.repository.calculate_cash_flow(db, team_id, days_ahead)
-        except Exception as e:
-            logger.error(f"Error calculating cash flow: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Internal server error while calculating cash flow"
             )
     
     def mark_overdue_receivables(self, db: Session) -> int:

@@ -11,7 +11,7 @@ import redis
 import uvicorn
 import logging
 from core.config.config import settings
-from routers import auth, users, teams, verticals, bids, receivables, analytics
+from routers import auth, users, teams, verticals, bids, receivables, analytics, module
 
 # Import utilities
 from utils.exceptions import AnalyticsError, ValidationError, PermissionError as CustomPermissionError
@@ -209,6 +209,7 @@ app.include_router(users.router, prefix=settings.API_V1_STR, tags=["Users"])
 app.include_router(teams.router, prefix=settings.API_V1_STR, tags=["Teams"])
 app.include_router(verticals.router, prefix=settings.API_V1_STR, tags=["Verticals"])
 app.include_router(bids.router, prefix=settings.API_V1_STR, tags=["Bids"])
+app.include_router(module.router, prefix=settings.API_V1_STR, tags=["Modules"])
 app.include_router(receivables.router, prefix=settings.API_V1_STR, tags=["Receivables"])
 app.include_router(analytics.router, prefix=settings.API_V1_STR, tags=["Analytics"])
 # app.mount("/analytics", StaticFiles(directory="exports"), name="analytics_exports")
