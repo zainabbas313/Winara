@@ -11,8 +11,8 @@ passlib[bcrypt]==1.7.4
 python-multipart==0.0.6
 redis==5.0.1
 python-dotenv==1.0.0
-pydantic==2.5.0
-pydantic-settings==2.1.0
+pydantic>=2.5.3
+pydantic-settings>=2.1.0
 email-validator==2.1.0
 jinja2==3.1.2
 aiofiles==23.2.1
@@ -22,4 +22,4 @@ celery==5.3.4
 python-dateutil==2.8.2
 pytz==2023.3
 bcrypt==4.0.1
-typing_extensions==4.14.1
+typing_extensions>=4.8.0
