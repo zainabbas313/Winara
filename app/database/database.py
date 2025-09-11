@@ -14,11 +14,41 @@ from sqlalchemy.pool import NullPool
 #     echo=settings.DEBUG
 # )
 
+# engine = create_engine(
+#     settings.DATABASE_URL,
+#     pool_pre_ping=True,
+#     poolclass=NullPool,  # Required for Supavisor transaction mode
+#     echo=settings.DEBUG
+# )
+
+
+def get_database_url():
+    """Get the correct database URL for psycopg2."""
+    url = settings.DATABASE_URL
+    
+    # Ensure we're using psycopg2 driver
+    if "+asyncpg" in url:
+        url = url.replace("+asyncpg", "+psycopg2")
+    elif "postgresql://" in url and "+psycopg2" not in url:
+        url = url.replace("postgresql://", "postgresql+psycopg2://")
+    
+    # Add SSL mode if not present
+    if "sslmode=" not in url:
+        connector = "&" if "?" in url else "?"
+        url += f"{connector}sslmode=require"
+    
+    return url
+
+# Create database engine
+DATABASE_URL = get_database_url()
+
 engine = create_engine(
-    settings.DATABASE_URL,
+    DATABASE_URL,
     pool_pre_ping=True,
-    poolclass=NullPool,  # Required for Supavisor transaction mode
-    echo=settings.DEBUG
+    pool_recycle=300,
+    pool_size=3,
+    max_overflow=5,
+    echo=False
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
