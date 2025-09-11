@@ -1,26 +1,12 @@
 from sqlalchemy import create_engine, MetaData
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import NullPool
 from redis import Redis
 import redis.asyncio as aioredis
 from core.config.config import settings
-from sqlalchemy.pool import NullPool
-# PostgreSQL Database
-# engine = create_engine(
-#     settings.DATABASE_URL,
-#     poolclass=StaticPool,
-#     pool_pre_ping=True,
-#     pool_recycle=300,
-#     echo=settings.DEBUG
-# )
+import logging
 
-# engine = create_engine(
-#     settings.DATABASE_URL,
-#     pool_pre_ping=True,
-#     poolclass=NullPool,  # Required for Supavisor transaction mode
-#     echo=settings.DEBUG
-# )
-
+logger = logging.getLogger(__name__)
 
 def get_database_url():
     """Get the correct database URL for psycopg2."""
@@ -39,35 +25,58 @@ def get_database_url():
     
     return url
 
-# Create database engine
+# Create database engine optimized for Supabase Transaction Pooler
 DATABASE_URL = get_database_url()
 
 engine = create_engine(
     DATABASE_URL,
-    pool_pre_ping=True,
-    pool_recycle=300,
-    pool_size=3,
-    max_overflow=5,
-    echo=False
+    poolclass=NullPool,        # Required for Supabase transaction pooler mode
+    pool_pre_ping=True,        # Test connections before use
+    pool_recycle=300,          # Recycle connections every 5 minutes
+    echo=settings.DEBUG,       # Enable SQL logging in debug mode
+    connect_args={
+        "connect_timeout": 10,  # Connection timeout in seconds
+        "application_name": "winara_app"  # Helps identify your app in Supabase logs
+    }
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 metadata = MetaData()
 
-# Redis connection
-redis_client = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+# Redis connection with error handling
+try:
+    redis_client = Redis.from_url(settings.REDIS_URL, decode_responses=True)
+    # Test Redis connection
+    redis_client.ping()
+    logger.info("✅ Redis connection successful")
+except Exception as e:
+    logger.warning(f"⚠️ Redis connection failed: {e}")
+    redis_client = None
 
 async def get_redis():
-    return await aioredis.from_url(settings.REDIS_URL, decode_responses=True)
-
-# Database dependency
-def get_db():
-    db = SessionLocal()
     try:
+        redis_conn = await aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+        await redis_conn.ping()
+        return redis_conn
+    except Exception as e:
+        logger.warning(f"⚠️ Async Redis connection failed: {e}")
+        return None
+
+# Database dependency with proper error handling
+def get_db():
+    db = None
+    try:
+        db = SessionLocal()
         yield db
+    except Exception as e:
+        logger.error(f"Database session error: {e}")
+        if db:
+            db.rollback()
+        raise
     finally:
-        db.close()
+        if db:
+            db.close()
 
 # Cache utilities
 class CacheKeys:
