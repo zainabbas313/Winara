@@ -4,13 +4,20 @@ from sqlalchemy.pool import StaticPool
 from redis import Redis
 import redis.asyncio as aioredis
 from core.config.config import settings
-
+from sqlalchemy.pool import NullPool
 # PostgreSQL Database
+# engine = create_engine(
+#     settings.DATABASE_URL,
+#     poolclass=StaticPool,
+#     pool_pre_ping=True,
+#     pool_recycle=300,
+#     echo=settings.DEBUG
+# )
+
 engine = create_engine(
     settings.DATABASE_URL,
-    poolclass=StaticPool,
     pool_pre_ping=True,
-    pool_recycle=300,
+    poolclass=NullPool,  # Required for Supavisor transaction mode
     echo=settings.DEBUG
 )
 
