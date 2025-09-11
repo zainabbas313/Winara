@@ -1,6 +1,6 @@
 from pydantic import Field
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import List, Optional
 import os
 
 
@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     
     # Database
-    DATABASE_URL: str = "postgresql://postgres:zain@localhost/winara"
+    DATABASE_URL: str 
     DATABASE_TEST_URL: Optional[str] = None
     
     # Security
@@ -32,7 +32,10 @@ class Settings(BaseSettings):
     # File Upload
     UPLOAD_FOLDER: str = "uploads"
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
-    ALLOWED_EXTENSIONS: set = {".jpg", ".jpeg", ".png", ".gif", ".pdf", ".doc", ".docx"}
+    ALLOWED_EXTENSIONS: list[str] = Field(
+        default=[".jpg", ".jpeg", ".png", ".gif", ".pdf", ".doc", ".docx"],
+        description="Allowed file extensions"
+    )
     
     # Pagination
     DEFAULT_PAGE_SIZE: int = 20
@@ -49,7 +52,7 @@ class Settings(BaseSettings):
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"
     
     # CORS
-    BACKEND_CORS_ORIGINS: list = ["http://localhost:3000", "http://localhost:8000"]
+    BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:8000"]
     
     # Default timezone
     DEFAULT_TIMEZONE: str = "UTC+05:00"
