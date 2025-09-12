@@ -36,15 +36,12 @@ class AuthService(IAuthService):
         """Authenticate user and create session."""
         try:
             # Get user by email
-            print("1")
             user = self.user_repo.get_by_email(db, login_data.email)
-            print("1")
-            self.user_repo.invalidate_all_sessions(db, user.id)
+            
             if not user:
-                # Log failed login attempt
-                print("1")
+                # Log failed login attempt - user is None, so don't use user.id
                 self.audit_repo.create_security_event(
-                    db, SecurityEventType.LOGIN_FAILED, 2, user.id, "",
+                    db, SecurityEventType.LOGIN_FAILED, 2, None, None,  # ✅ Use None for user_id
                     device_data.ip_address, device_data.user_agent,
                     f"Login failed for email: {login_data.email}",
                     {"email": login_data.email}
@@ -54,7 +51,9 @@ class AuthService(IAuthService):
                     detail="Invalid email or password"
                 )
             
-            print("1")
+            # Now we know user exists, so we can safely invalidate sessions
+            self.user_repo.invalidate_all_sessions(db, user.id)
+            
             # Verify password
             if not verify_password(login_data.password, user.hashed_password):
                 # Log failed login attempt
@@ -68,7 +67,6 @@ class AuthService(IAuthService):
                     detail="Invalid email or password"
                 )
             
-            print("1")
             # Check user status
             if not user.is_active or user.status != UserStatus.ACTIVE:
                 raise HTTPException(
