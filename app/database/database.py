@@ -4,17 +4,11 @@ from sqlalchemy.orm import sessionmaker
 from redis import Redis
 import redis.asyncio as aioredis
 from core.config.config import settings
-import ssl
 import time
 from sqlalchemy.exc import OperationalError
 import logging
 
 logger = logging.getLogger(__name__)
-
-# Configure SSL for Supabase
-ssl_context = ssl.create_default_context()
-ssl_context.check_hostname = False
-ssl_context.verify_mode = ssl.CERT_NONE
 
 # PostgreSQL Database with retry mechanism
 def create_engine_with_retry():
@@ -23,19 +17,17 @@ def create_engine_with_retry():
     
     while retry_count < max_retries:
         try:
+            # For Supabase, use the connection string with sslmode=require
+            # Remove any explicit SSL parameters as they're included in the connection string
             engine = create_engine(
                 settings.DATABASE_URL,
-                connect_args={
-                    "sslmode": "require",
-                    "sslrootcert": "/etc/ssl/certs/ca-certificates.crt",  # Render's CA path
-                    "ssl": ssl_context
-                },
                 pool_pre_ping=True,
                 pool_recycle=300,
                 pool_size=5,
                 max_overflow=10,
                 echo=settings.DEBUG,
-                pool_timeout=30  # Increased timeout for Render
+                pool_timeout=30,
+                connect_args={'connect_timeout': 10}
             )
             
             # Test connection
