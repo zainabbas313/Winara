@@ -10,6 +10,7 @@ import redis
 
 import uvicorn
 import logging
+from database.database import test_database_connection
 from core.config.config import settings
 from routers import auth, users, teams, verticals, bids, receivables, analytics, module
 
@@ -238,6 +239,21 @@ async def root():
         "docs": "/docs",
         "health_url": "/health"
     }
+
+@app.on_event("startup")
+async def startup_event():
+    logger.info("🚀 Starting Winara application...")
+    
+    # Test database connection AFTER startup, not during import
+    db_connected = test_database_connection(max_retries=5)
+    if not db_connected:
+        logger.error("❌ Database connection failed during startup")
+        # Don't exit in production - let the app run and handle errors gracefully
+    else:
+        logger.info("✅ Database connection verified")
+    
+    logger.info("🎉 Application startup completed")
+
 
 if __name__ == "__main__":
     uvicorn.run(
